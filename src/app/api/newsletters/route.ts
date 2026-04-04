@@ -50,52 +50,19 @@ async function fetchFromInoreader(token: string, from: string, to: string): Prom
   const startTs = Math.floor(new Date(from + 'T00:00:00Z').getTime() / 1000);
   const endTs = Math.floor(new Date(to + 'T23:59:59Z').getTime() / 1000);
 
-  const allItems: InoreaderItem[] = [];
-  const seenIds = new Set<string>();
+  // Fetch ONLY from the Newsletter section (not feeds/folders)
+  const nlUrl = `https://www.inoreader.com/reader/api/0/stream/contents/user/-/state/com.google/created-by-newsletter?n=100&ot=${startTs}&nt=${endTs}`;
+  const res = await fetch(nlUrl, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 
-  // First: fetch from the dedicated newsletter stream
-  try {
-    const nlUrl = `https://www.inoreader.com/reader/api/0/stream/contents/user/-/state/com.google/created-by-newsletter?n=100&ot=${startTs}&nt=${endTs}`;
-    const nlRes = await fetch(nlUrl, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (nlRes.ok) {
-      const nlData = await nlRes.json();
-      for (const item of (nlData.items || [])) {
-        if (!seenIds.has(item.id)) {
-          seenIds.add(item.id);
-          allItems.push(item);
-        }
-      }
-    }
-  } catch {
-    // Fall through to folder-based fetch
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Inoreader API error ${res.status}: ${text}`);
   }
 
-  // Also fetch from newsletter folders for broader coverage
-  for (const folder of NEWSLETTER_FOLDERS) {
-    try {
-      const encodedFolder = encodeURIComponent(folder);
-      const url = `https://www.inoreader.com/reader/api/0/stream/contents/${encodedFolder}?n=50&ot=${startTs}&nt=${endTs}`;
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!res.ok) continue;
-
-      const data = await res.json();
-      for (const item of (data.items || [])) {
-        if (!seenIds.has(item.id)) {
-          seenIds.add(item.id);
-          allItems.push(item);
-        }
-      }
-    } catch {
-      // Skip failed folders
-    }
-  }
-
-  return allItems;
+  const data = await res.json();
+  return data.items || [];
 }
 
 async function cacheArticles(items: InoreaderItem[]) {
