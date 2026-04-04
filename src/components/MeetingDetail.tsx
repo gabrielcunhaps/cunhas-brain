@@ -18,13 +18,33 @@ export default function MeetingDetail({ meetingId }: MeetingDetailProps) {
   const [error, setError] = useState<string | null>(null);
   const [claudeCopied, setClaudeCopied] = useState(false);
 
-  const sendToClaudeAI = () => {
+  const sendToClaudeAI = async () => {
     if (!meeting) return;
     const prompt = `Here is a transcript from my meeting "${meeting.title}" on ${formatDate(meeting.date)}.\n\nPlease review it and help me with any follow-ups, action items, or questions I should address.\n\n---\n\nTRANSCRIPT:\n\n${meeting.rawContent.slice(0, 80000)}`;
-    navigator.clipboard.writeText(prompt);
-    setClaudeCopied(true);
-    setTimeout(() => setClaudeCopied(false), 3000);
-    window.open('https://claude.ai/new', '_blank');
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setClaudeCopied(true);
+      setTimeout(() => setClaudeCopied(false), 5000);
+      // Small delay to ensure clipboard is written before opening new tab
+      setTimeout(() => {
+        window.open('https://claude.ai/new', '_blank');
+      }, 300);
+    } catch {
+      // Fallback: create a textarea, select, copy
+      const textarea = document.createElement('textarea');
+      textarea.value = prompt;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setClaudeCopied(true);
+      setTimeout(() => setClaudeCopied(false), 5000);
+      setTimeout(() => {
+        window.open('https://claude.ai/new', '_blank');
+      }, 300);
+    }
   };
 
   useEffect(() => {
@@ -105,7 +125,7 @@ export default function MeetingDetail({ meetingId }: MeetingDetailProps) {
             onClick={sendToClaudeAI}
             className="ml-auto px-3 py-1.5 text-xs rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors font-medium"
           >
-            {claudeCopied ? 'Copied! Paste in Claude.ai →' : 'Send to Claude.ai'}
+            {claudeCopied ? 'Transcript copied! Paste (Cmd+V) in Claude.ai →' : 'Send to Claude.ai'}
           </button>
         </div>
       </div>

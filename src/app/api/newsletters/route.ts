@@ -188,24 +188,93 @@ export async function POST(request: NextRequest) {
       .map((r, i) => `${i + 1}. [${r.date}] "${r.title}" from ${r.source}\n${r.content?.slice(0, 500) || 'No content'}\nURL: ${r.url}`)
       .join('\n\n');
 
+    const articlesFormatted = rows
+      .map((r, i) => `--- ARTICLE ${i + 1} ---\nTitle: ${r.title}\nSource: ${r.source}\nDate: ${r.date}\nURL: ${r.url}\n\n${r.content?.slice(0, 3000) || 'No content'}\n`)
+      .join('\n');
+
     const client = await getAnthropicClient();
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2048,
+      max_tokens: 4096,
       messages: [
         {
           role: 'user',
-          content: `You are summarizing Gabriel's daily newsletter digest. Summarize these ${rows.length} articles from ${from} to ${to}.
+          content: `You are an AI industry analyst preparing a concise, non-redundant executive briefing.
 
-Group by topic/category. For each article highlight:
-- Key insight in 1-2 sentences
-- Why it matters
-- Any action items
+CONTEXT:
+- Source: Gabriel's Newsletter subscriptions
+- Date range: ${from} to ${to}
+- Total articles analyzed: ${rows.length}
 
-End with a "Top 3 Things to Pay Attention To" section.
+CRITICAL RULES:
+- ZERO redundancy: every fact appears in exactly ONE section.
+- Be concise and information-dense. No filler sentences.
+- Only include what is actually mentioned in the articles. Do not hallucinate.
+- Reference articles by number (e.g., "Art. 5, 12").
 
-Articles:
-${articlesText.slice(0, 50000)}`,
+YOUR OUTPUT MUST FOLLOW THIS EXACT STRUCTURE:
+
+# Newsletter Recap: ${from} to ${to}
+Source: ${rows.length} articles
+
+---
+
+## Executive Summary
+
+**One paragraph** (4-6 sentences max) capturing the dominant narrative arc.
+
+Then **bullet points** for the 5-10 most important developments:
+- **[Company/Product]**: What happened and why it matters
+
+---
+
+## Product & Release Matrix
+
+| Company | Product | Type | What Happened | Date | Sources |
+|---|---|---|---|---|---|
+
+Type: Launch / Update / Announce / Shutdown / Acquisition. Sort by date (newest first).
+
+---
+
+## Key Themes & Cross-Newsletter Signals
+
+For each theme: bold title, 2-3 sentences max, list articles discussing it in parentheses. Only include themes in 2+ articles.
+
+---
+
+## Thought Leadership & Debates
+
+Only genuinely interesting opinions, predictions, or contrarian takes:
+- **Who said it** (person + publication)
+- **The argument** (1-2 sentences)
+- Source article number
+
+---
+
+## Market Moves & Competitive Landscape
+
+**Funding & Valuations:**
+- Company — amount, valuation, purpose (Art. X)
+
+**Strategic Moves:**
+- Company — what they did and why (Art. X)
+
+---
+
+## What to Watch
+
+5-7 bullet points max. Forward-looking, not summaries.
+
+---
+
+ARTICLES DATA:
+
+${articlesFormatted.slice(0, 80000)}
+
+---
+
+Remember: ZERO redundancy across sections. Each fact lives in exactly one place.`,
         },
       ],
     });
