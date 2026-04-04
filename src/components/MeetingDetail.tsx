@@ -88,7 +88,7 @@ export default function MeetingDetail({ meetingId }: MeetingDetailProps) {
           </span>
           {meeting.speakers.length > 0 && (
             <span className="text-[var(--text-muted)] text-xs">
-              Speakers: {meeting.speakers.map((s) => s.name).join(', ')}
+              Speakers: {meeting.speakers.map((s) => s.name || s.first_name || `Speaker ${s.index}`).filter(Boolean).join(', ')}
             </span>
           )}
         </div>

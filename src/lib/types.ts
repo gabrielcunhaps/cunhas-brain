@@ -4,14 +4,14 @@ export interface Meeting {
   date: string;
   duration: number; // minutes
   participants: string[];
-  speakers: { name: string; index: number }[];
+  speakers: { name?: string; first_name?: string; last_name?: string; index: number }[];
   hasTranscript: boolean;
 }
 
 export interface SpeakerSegment {
   speaker: string;
   text: string;
-  timestamp: string;
+  timestamp?: string;
 }
 
 export interface MeetingDetail extends Meeting {
