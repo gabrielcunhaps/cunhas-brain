@@ -125,7 +125,11 @@ end try`);
     console.log(`[${ts()}] Opened meeting: ${title}`);
 
   } else if (result === 'Take Action') {
-    await showActionPopup(meeting, todos);
+    try {
+      await showActionPopup(meeting, todos);
+    } catch (err) {
+      console.error(`[${ts()}] Action error:`, err.message);
+    }
 
   } else {
     console.log(`[${ts()}] Dismissed: ${title}`);
@@ -216,7 +220,16 @@ end try`);
     } else {
       // Open VS Code + copy command
       if (fullPath) {
-        execSync(`open -a "Visual Studio Code" "${fullPath.replace(/~/g, os.homedir())}"`);
+        const expandedPath = fullPath.replace(/~/g, os.homedir());
+        try {
+          if (fs.existsSync(expandedPath)) {
+            execSync(`open -a "Visual Studio Code" "${expandedPath}"`);
+          } else {
+            // Try just the prefix if folder doesn't exist
+            const prefixExpanded = workspacePrefix.replace(/~/g, os.homedir()).replace(/\/$/, '');
+            execSync(`open -a "Visual Studio Code" "${prefixExpanded}"`);
+          }
+        } catch {}
       }
       const pbcopy = require('child_process').spawn('pbcopy');
       pbcopy.stdin.write(cmd);
