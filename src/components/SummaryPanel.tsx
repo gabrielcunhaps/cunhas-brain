@@ -137,12 +137,19 @@ export default function SummaryPanel({ meetingId }: SummaryPanelProps) {
             Action Items
           </h4>
           <ul className="space-y-1">
-            {summary.actionItems.map((a, i) => (
-              <li key={i} className="text-[var(--text-secondary)] text-sm flex gap-2">
-                <span className="text-[var(--success)] flex-shrink-0">-</span>
-                <span>{a}</span>
-              </li>
-            ))}
+            {summary.actionItems.map((a, i) => {
+              const text = typeof a === 'string' ? a : (a as Record<string, unknown>)?.task || JSON.stringify(a);
+              const assignee = typeof a === 'object' && a !== null ? (a as Record<string, unknown>)?.assignee : null;
+              return (
+                <li key={i} className="text-[var(--text-secondary)] text-sm flex gap-2">
+                  <span className="text-[var(--success)] flex-shrink-0">-</span>
+                  <span>
+                    {String(text)}
+                    {assignee && <span className="text-[var(--text-muted)]"> ({String(assignee)})</span>}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
