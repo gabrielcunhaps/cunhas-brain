@@ -184,10 +184,6 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const articlesText = rows
-      .map((r, i) => `${i + 1}. [${r.date}] "${r.title}" from ${r.source}\n${r.content?.slice(0, 500) || 'No content'}\nURL: ${r.url}`)
-      .join('\n\n');
-
     const articlesFormatted = rows
       .map((r, i) => `--- ARTICLE ${i + 1} ---\nTitle: ${r.title}\nSource: ${r.source}\nDate: ${r.date}\nURL: ${r.url}\n\n${r.content?.slice(0, 3000) || 'No content'}\n`)
       .join('\n');
