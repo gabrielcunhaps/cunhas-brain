@@ -73,6 +73,9 @@ export default function SettingsPage() {
   const [health, setHealth] = useState<HealthData | null>(null);
   const [healthLoading, setHealthLoading] = useState(true);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [projectFolders, setProjectFolders] = useState<string[]>([]);
+  const [newFolder, setNewFolder] = useState('');
+  const [savingFolders, setSavingFolders] = useState(false);
 
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
@@ -103,6 +106,13 @@ export default function SettingsPage() {
           if (data.anthropic_api_key) setCurrentMasked(data.anthropic_api_key);
           if (data.anthropic_model) setModel(data.anthropic_model);
           if (data.github_token) setGithubMasked(data.github_token);
+          if (data.project_folders) {
+            try {
+              setProjectFolders(JSON.parse(data.project_folders));
+            } catch {
+              setProjectFolders([]);
+            }
+          }
         }
       } catch (err) {
         console.error('Failed to load settings:', err);
@@ -219,6 +229,42 @@ export default function SettingsPage() {
     } finally {
       setTesting(false);
     }
+  };
+
+  const saveProjectFolders = async (folders: string[]) => {
+    setSavingFolders(true);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'project_folders', value: JSON.stringify(folders) }),
+      });
+      if (res.ok) {
+        setProjectFolders(folders);
+        showToast('success', 'Project folders updated');
+      } else {
+        showToast('error', 'Failed to save project folders');
+      }
+    } catch {
+      showToast('error', 'Failed to save project folders');
+    } finally {
+      setSavingFolders(false);
+    }
+  };
+
+  const handleAddFolder = () => {
+    const trimmed = newFolder.trim();
+    if (!trimmed) return;
+    if (projectFolders.includes(trimmed)) {
+      showToast('error', 'Folder already added');
+      return;
+    }
+    saveProjectFolders([...projectFolders, trimmed]);
+    setNewFolder('');
+  };
+
+  const handleRemoveFolder = (path: string) => {
+    saveProjectFolders(projectFolders.filter((f) => f !== path));
   };
 
   const webhookUrl = typeof window !== 'undefined'
@@ -345,6 +391,56 @@ export default function SettingsPage() {
                 className="px-4 py-2 rounded-lg border border-[var(--border)] text-[var(--text-secondary)] text-sm font-medium hover:bg-[var(--surface-2)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {testing ? 'Testing...' : 'Test Connection'}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* Section: Project Folders */}
+        <section className="bg-[var(--surface-1)] border border-[var(--border)] rounded-2xl p-6">
+          <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-1">
+            Project Folders
+          </h2>
+          <p className="text-sm text-[var(--text-muted)] mb-5">
+            Configure folders for Claude Code integration
+          </p>
+          <div className="space-y-2">
+            {projectFolders.length === 0 && (
+              <p className="text-xs text-[var(--text-muted)] italic">
+                No folders configured. Suggestion: ~/Desktop/workspace
+              </p>
+            )}
+            {projectFolders.map((folder) => (
+              <div
+                key={folder}
+                className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]"
+              >
+                <code className="text-sm text-[var(--text-secondary)] truncate">{folder}</code>
+                <button
+                  onClick={() => handleRemoveFolder(folder)}
+                  disabled={savingFolders}
+                  className="text-[var(--danger)] hover:text-red-400 text-sm font-bold shrink-0 disabled:opacity-50"
+                  title="Remove folder"
+                >
+                  X
+                </button>
+              </div>
+            ))}
+            <div className="flex gap-2 mt-3">
+              <input
+                type="text"
+                value={newFolder}
+                onChange={(e) => setNewFolder(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleAddFolder(); }}
+                placeholder="~/Desktop/workspace"
+                className="flex-1 px-3 py-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] text-sm focus:outline-none focus:border-[var(--accent)]"
+              />
+              <button
+                onClick={handleAddFolder}
+                disabled={savingFolders || !newFolder.trim()}
+                className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                + Add
               </button>
             </div>
           </div>

@@ -2,6 +2,16 @@
 
 ### 2026-03-29
 - **Project**: cunhas-brain
+- **Change**: Built desktop notification system for new meetings. Created API endpoint (`src/app/api/notifications/route.ts`) with GET (polls for new meetings since timestamp, auto-generates summaries) and POST (tracks notification actions). Created local Mac notifier script (`scripts/notifier.js`) that polls the API and shows native macOS notifications with dialog action buttons. Created LaunchAgent installer (`scripts/install-notifier.sh`). Added `/api/notifications` to PUBLIC_PATHS in middleware.
+- **Outcome**: After a Krisp meeting ends, the notifier polls every 5 minutes, auto-generates summaries if missing, and shows a macOS notification with summary and todos. Meetings with action items get a dialog with "Open in Browser" button.
+
+### 2026-03-29
+- **Project**: cunhas-brain
+- **Change**: Enhanced Claude Code integration. Added "Project Folders" section to Settings page (add/remove folder paths stored as JSON in app_settings). Replaced simple "Copy Claude cmd" / "Open in VS Code" buttons in Dashboard with a "Run in Claude Code" inline expansion panel featuring folder picker, notes textarea, command preview, and Copy Command / Open VS Code action buttons.
+- **Outcome**: Users can configure project folders in Settings, then from any Dashboard todo, expand the Claude Code panel to pick a folder, add context notes, preview the full `claude -p` command, and copy or open in VS Code with one click.
+
+### 2026-03-29
+- **Project**: cunhas-brain
 - **Change**: Built GitHub feature. Created 3 new files: GitHub API route (`src/app/api/github/route.ts`) with repos and activity endpoints using GitHub API, GitHubView component (`src/components/GitHubView.tsx`) with tabbed repos grid and activity feed, and GitHub page (`src/app/github/page.tsx`). Modified `src/components/Nav.tsx` to add GitHub link and `src/app/settings/page.tsx` to add GitHub token input and integration card.
 - **Outcome**: GitHub page shows user repositories (2-col grid with language badges, stars, issues) and activity feed (color-coded event types) with auto-refresh. Token management integrated into Settings page with masked display and username resolution.
 
