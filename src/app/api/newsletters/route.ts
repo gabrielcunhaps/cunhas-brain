@@ -5,15 +5,7 @@ import { log } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
-// Newsletter folders in Inoreader (not raw feed)
-const NEWSLETTER_FOLDERS = [
-  'user/-/label/AI',
-  'user/-/label/Tech News',
-  'user/-/label/Finance & Economics',
-  'user/-/label/World News',
-  'user/-/label/Science & Space',
-  'user/-/label/Oddities',
-];
+// Inoreader newsletter stream: user/-/state/com.google/created-by-newsletter
 
 function stripHtml(html: string): string {
   return html

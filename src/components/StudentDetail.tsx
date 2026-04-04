@@ -3,6 +3,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
+interface SessionInsights {
+  sessionSummary?: string;
+  todos?: string[];
+  recommendations?: string[];
+  topicsDiscussed?: string[];
+  progressNotes?: string;
+  nextSessionPlan?: string;
+  homework?: string;
+}
+
 interface Meeting {
   id: string;
   meeting_id: string;
@@ -35,6 +45,73 @@ interface AvailableMeeting {
   duration: number;
 }
 
+function parseInsights(sessionNotes: string | null): SessionInsights | null {
+  if (!sessionNotes) return null;
+  try {
+    const parsed = JSON.parse(sessionNotes);
+    if (typeof parsed === 'object' && parsed !== null) return parsed;
+  } catch {
+    // Not JSON, return as plain summary
+    return { sessionSummary: sessionNotes };
+  }
+  return null;
+}
+
+function formatDuration(seconds: number): string {
+  if (!seconds || seconds <= 0) return '0m';
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  if (hrs > 0) return `${hrs}h ${mins}m`;
+  return `${mins}m`;
+}
+
+// Collapsible section component
+function CollapsibleSection({
+  title,
+  icon,
+  defaultOpen = false,
+  badge,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  defaultOpen?: boolean;
+  badge?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-xl bg-[var(--surface-1)] border border-[var(--border)] overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-[var(--surface-2)] transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          {icon}
+          <span className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+            {title}
+          </span>
+          {badge}
+        </div>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="var(--text-muted)"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`transition-transform ${open ? 'rotate-180' : ''}`}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {open && <div className="px-4 pb-4 border-t border-[var(--border)]">{children}</div>}
+    </div>
+  );
+}
+
 export default function StudentDetail({ studentId }: { studentId: string }) {
   const router = useRouter();
   const [student, setStudent] = useState<StudentData | null>(null);
@@ -50,6 +127,18 @@ export default function StudentDetail({ studentId }: { studentId: string }) {
   const [loadingMeetings, setLoadingMeetings] = useState(false);
   const [attaching, setAttaching] = useState(false);
   const [aiProcessing, setAiProcessing] = useState(false);
+
+  // Expanded sessions
+  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
+
+  const toggleSession = (id: string) => {
+    setExpandedSessions((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const fetchStudent = useCallback(async () => {
     try {
@@ -87,7 +176,6 @@ export default function StudentDetail({ studentId }: { studentId: string }) {
       if (!res.ok) throw new Error('Failed to fetch meetings');
       const allMeetings: AvailableMeeting[] = await res.json();
 
-      // Filter out already-attached meetings
       const attachedIds = new Set(student?.meetings.map((m) => m.meeting_id) || []);
       setAvailableMeetings(allMeetings.filter((m) => !attachedIds.has(m.id)));
     } catch (err) {
@@ -153,6 +241,7 @@ export default function StudentDetail({ studentId }: { studentId: string }) {
     switch (status) {
       case 'active': return 'var(--success)';
       case 'paused': return 'var(--text-muted)';
+      case 'completed': return 'var(--accent)';
       case 'inactive': return 'var(--danger)';
       default: return 'var(--text-secondary)';
     }
@@ -185,51 +274,83 @@ export default function StudentDetail({ studentId }: { studentId: string }) {
 
   if (!student) return null;
 
+  // Sort meetings by date ascending for session numbering
+  const sortedMeetings = [...student.meetings].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+  const totalHours = sortedMeetings.reduce((sum, m) => sum + (m.duration || 0), 0);
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <button
-            onClick={() => router.push('/students')}
-            className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] mb-2 block"
-          >
-            &larr; Back to Students
-          </button>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">{student.name}</h1>
-          <div className="flex items-center gap-3 mt-1">
-            {student.email && (
-              <span className="text-sm text-[var(--text-secondary)]">{student.email}</span>
-            )}
-            {student.platform && (
-              <span className="text-xs px-2 py-0.5 rounded-md bg-[var(--surface-2)] text-[var(--text-muted)]">
-                {student.platform}
+    <div className="space-y-5">
+      {/* Back link */}
+      <button
+        onClick={() => router.push('/students')}
+        className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] flex items-center gap-1 transition-colors"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+        Back to Students
+      </button>
+
+      {/* Header Card */}
+      <div className="p-5 rounded-xl bg-[var(--surface-1)] border border-[var(--border)]">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3 mb-2 flex-wrap">
+              <h1 className="text-2xl font-bold text-[var(--text-primary)]">{student.name}</h1>
+              <span
+                className="text-[10px] font-medium px-2.5 py-1 rounded-full uppercase"
+                style={{
+                  color: statusColor(student.status),
+                  backgroundColor: `color-mix(in srgb, ${statusColor(student.status)} 15%, transparent)`,
+                }}
+              >
+                {student.status}
               </span>
+              {student.platform && (
+                <span className="text-[10px] px-2 py-0.5 rounded-md bg-[var(--surface-2)] text-[var(--text-muted)] border border-[var(--border)]">
+                  {student.platform}
+                </span>
+              )}
+            </div>
+            {student.email && (
+              <p className="text-sm text-[var(--text-secondary)] mb-3">{student.email}</p>
             )}
-            <span
-              className="text-[10px] font-medium px-2 py-0.5 rounded-full uppercase"
-              style={{
-                color: statusColor(student.status),
-                backgroundColor: `color-mix(in srgb, ${statusColor(student.status)} 15%, transparent)`,
-              }}
-            >
-              {student.status}
-            </span>
+            {/* Stats */}
+            <div className="flex items-center gap-5 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                <span className="text-sm text-[var(--text-primary)] font-medium">{sortedMeetings.length}</span>
+                <span className="text-xs text-[var(--text-muted)]">{sortedMeetings.length === 1 ? 'session' : 'sessions'}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                </svg>
+                <span className="text-sm text-[var(--text-primary)] font-medium">{formatDuration(totalHours)}</span>
+                <span className="text-xs text-[var(--text-muted)]">total</span>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setEditing(!editing)}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--surface-2)] text-[var(--text-secondary)] hover:bg-[var(--surface-3)] border border-[var(--border)] transition-colors"
-          >
-            {editing ? 'Cancel' : 'Edit Profile'}
-          </button>
-          <button
-            onClick={handleDelete}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg text-[var(--danger)] hover:bg-[var(--surface-2)] border border-[var(--border)] transition-colors"
-          >
-            Delete
-          </button>
+
+          {/* Action buttons */}
+          <div className="flex gap-2 shrink-0">
+            <button
+              onClick={() => setEditing(!editing)}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--surface-2)] text-[var(--text-secondary)] hover:bg-[var(--surface-3)] border border-[var(--border)] transition-colors"
+            >
+              {editing ? 'Cancel' : 'Edit'}
+            </button>
+            <button
+              onClick={handleDelete}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg text-[var(--danger)] hover:bg-[var(--surface-2)] border border-[var(--border)] transition-colors"
+            >
+              Delete
+            </button>
+          </div>
         </div>
       </div>
 
@@ -282,142 +403,183 @@ export default function StudentDetail({ studentId }: { studentId: string }) {
         </div>
       )}
 
-      {/* Notes */}
+      {/* Notes (when not editing) */}
       {student.notes && !editing && (
-        <div className="p-4 rounded-xl bg-[var(--surface-1)] border border-[var(--border)]">
-          <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">
-            Notes
-          </h2>
-          <p className="text-sm text-[var(--text-secondary)]">{student.notes}</p>
+        <div className="px-4 py-3 rounded-xl bg-[var(--surface-1)] border border-[var(--border)]">
+          <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Notes</span>
+          <p className="text-sm text-[var(--text-secondary)] mt-1">{student.notes}</p>
         </div>
       )}
 
-      {/* Profile */}
+      {/* Profile Section (collapsible) */}
       {student.profile && (
-        <div className="p-4 rounded-xl bg-[var(--surface-1)] border border-[var(--border)]">
-          <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-3">
-            Student Profile
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <CollapsibleSection
+          title="Student Profile"
+          defaultOpen={false}
+          icon={
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+            </svg>
+          }
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
             {student.profile.background && (
               <div>
-                <span className="text-xs text-[var(--text-muted)]">Background</span>
+                <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase">Background</span>
                 <p className="text-sm text-[var(--text-primary)] mt-0.5">{student.profile.background}</p>
               </div>
             )}
             {student.profile.goals && (
               <div>
-                <span className="text-xs text-[var(--text-muted)]">Goals</span>
+                <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase">Goals</span>
                 <p className="text-sm text-[var(--text-primary)] mt-0.5">{student.profile.goals}</p>
               </div>
             )}
             {student.profile.level && (
               <div>
-                <span className="text-xs text-[var(--text-muted)]">Level</span>
+                <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase">Level</span>
                 <p className="text-sm text-[var(--text-primary)] mt-0.5">{student.profile.level}</p>
               </div>
             )}
             {student.profile.style && (
               <div>
-                <span className="text-xs text-[var(--text-muted)]">Learning Style</span>
+                <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase">Learning Style</span>
                 <p className="text-sm text-[var(--text-primary)] mt-0.5">{student.profile.style}</p>
               </div>
             )}
           </div>
-        </div>
+        </CollapsibleSection>
       )}
 
-      {/* Learning Plan */}
+      {/* Learning Plan Section (collapsible) */}
       {student.learning_plan && (
-        <div className="p-4 rounded-xl bg-[var(--surface-1)] border border-[var(--border)]">
-          <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-3">
-            Learning Plan
-          </h2>
-          {student.learning_plan.topics && student.learning_plan.topics.length > 0 && (
-            <div className="mb-3">
-              <span className="text-xs text-[var(--text-muted)]">Topics</span>
-              <ul className="mt-1 space-y-1">
-                {student.learning_plan.topics.map((topic, i) => (
-                  <li key={i} className="text-sm text-[var(--text-primary)] flex items-start gap-2">
-                    <span className="text-[var(--accent)] mt-0.5">&#8226;</span>
-                    {topic}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {student.learning_plan.milestones && student.learning_plan.milestones.length > 0 && (
-            <div className="mb-3">
-              <span className="text-xs text-[var(--text-muted)]">Milestones</span>
-              <ul className="mt-1 space-y-1">
-                {student.learning_plan.milestones.map((milestone, i) => (
-                  <li key={i} className="text-sm text-[var(--text-primary)] flex items-start gap-2">
-                    <span className="text-[var(--success)] mt-0.5">&#9679;</span>
-                    {milestone}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {student.learning_plan.timeline && (
-            <div>
-              <span className="text-xs text-[var(--text-muted)]">Timeline</span>
-              <p className="text-sm text-[var(--text-primary)] mt-0.5">{student.learning_plan.timeline}</p>
-            </div>
-          )}
-        </div>
+        <CollapsibleSection
+          title="Learning Plan"
+          defaultOpen={false}
+          icon={
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+            </svg>
+          }
+        >
+          <div className="mt-3 space-y-4">
+            {student.learning_plan.topics && student.learning_plan.topics.length > 0 && (
+              <div>
+                <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase">Topics</span>
+                <ul className="mt-1.5 space-y-1.5">
+                  {student.learning_plan.topics.map((topic, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-primary)]">
+                      <input
+                        type="checkbox"
+                        disabled
+                        className="mt-0.5 accent-[var(--accent)]"
+                        style={{ accentColor: 'var(--accent)' }}
+                      />
+                      {topic}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {student.learning_plan.milestones && student.learning_plan.milestones.length > 0 && (
+              <div>
+                <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase">Milestones</span>
+                <ul className="mt-1.5 space-y-1.5">
+                  {student.learning_plan.milestones.map((milestone, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-primary)]">
+                      <span
+                        className="inline-block w-2 h-2 rounded-full mt-1.5 shrink-0"
+                        style={{ backgroundColor: 'var(--success)' }}
+                      />
+                      {milestone}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {student.learning_plan.timeline && (
+              <div>
+                <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase">Timeline</span>
+                <p className="text-sm text-[var(--text-primary)] mt-0.5">{student.learning_plan.timeline}</p>
+              </div>
+            )}
+          </div>
+        </CollapsibleSection>
       )}
 
-      {/* Meetings Section */}
-      <div className="p-4 rounded-xl bg-[var(--surface-1)] border border-[var(--border)]">
+      {/* Session History */}
+      <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
-            Meeting History ({student.meetings.length})
-          </h2>
+          <div className="flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+            </svg>
+            <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+              Session History ({sortedMeetings.length})
+            </h2>
+          </div>
           <button
             onClick={() => {
               setShowAttach(!showAttach);
               if (!showAttach) fetchAvailableMeetings();
             }}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors"
+            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors flex items-center gap-1.5"
           >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
             Attach Meeting
           </button>
         </div>
 
         {/* AI Processing Indicator */}
         {aiProcessing && (
-          <div className="mb-3 px-3 py-2 text-sm rounded-lg bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20 flex items-center gap-2">
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+          <div className="mb-3 px-4 py-3 text-sm rounded-xl bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20 flex items-center gap-3">
+            <svg className="animate-spin h-4 w-4 shrink-0" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
-            {student.meetings.length === 0
-              ? 'Generating learning plan and student profile...'
-              : 'Generating session notes and next session plan...'}
+            <div>
+              <p className="font-medium">Analyzing meeting...</p>
+              <p className="text-xs opacity-75 mt-0.5">
+                {sortedMeetings.length === 0
+                  ? 'Generating learning plan, student profile, and session insights'
+                  : 'Generating session insights, todos, and recommendations'}
+              </p>
+            </div>
           </div>
         )}
 
         {/* Attach Meeting Dropdown */}
         {showAttach && (
-          <div className="mb-3 p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] max-h-60 overflow-y-auto">
+          <div className="mb-3 p-3 rounded-xl bg-[var(--surface-1)] border border-[var(--border)] max-h-60 overflow-y-auto">
             {loadingMeetings ? (
-              <p className="text-xs text-[var(--text-muted)]">Loading meetings...</p>
+              <p className="text-xs text-[var(--text-muted)] py-2 text-center">Loading available meetings...</p>
             ) : availableMeetings.length === 0 ? (
-              <p className="text-xs text-[var(--text-muted)]">No unattached meetings available.</p>
+              <p className="text-xs text-[var(--text-muted)] py-2 text-center">No unattached meetings available.</p>
             ) : (
               <div className="space-y-1">
+                <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider mb-2 px-2">
+                  Select a meeting to attach and analyze
+                </p>
                 {availableMeetings.map((m) => (
                   <button
                     key={m.id}
                     onClick={() => handleAttach(m.id)}
                     disabled={attaching}
-                    className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-[var(--surface-3)] transition-colors disabled:opacity-50 flex items-center justify-between"
+                    className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-[var(--surface-2)] transition-colors disabled:opacity-50 flex items-center justify-between group"
                   >
-                    <span className="text-[var(--text-primary)] truncate">{m.title}</span>
-                    <span className="text-xs text-[var(--text-muted)] ml-2 shrink-0">
-                      {new Date(m.date).toLocaleDateString()}
+                    <span className="text-[var(--text-primary)] truncate group-hover:text-[var(--accent)] transition-colors">
+                      {m.title}
                     </span>
+                    <div className="flex items-center gap-2 ml-2 shrink-0">
+                      <span className="text-xs text-[var(--text-muted)]">
+                        {formatDuration(m.duration)}
+                      </span>
+                      <span className="text-xs text-[var(--text-muted)]">
+                        {new Date(m.date).toLocaleDateString()}
+                      </span>
+                    </div>
                   </button>
                 ))}
               </div>
@@ -425,57 +587,269 @@ export default function StudentDetail({ studentId }: { studentId: string }) {
           </div>
         )}
 
-        {/* Meeting List */}
-        {student.meetings.length === 0 ? (
-          <p className="text-sm text-[var(--text-muted)] py-4 text-center">
-            No meetings attached yet. Attach a meeting to get started.
-          </p>
+        {/* Session Timeline */}
+        {sortedMeetings.length === 0 ? (
+          <div className="text-center py-12 rounded-xl bg-[var(--surface-1)] border border-[var(--border)]">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-3 opacity-50">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            <p className="text-sm text-[var(--text-muted)]">No sessions yet</p>
+            <p className="text-xs text-[var(--text-muted)] mt-1">Attach a meeting to get started with AI-powered session insights</p>
+          </div>
         ) : (
-          <div className="space-y-3">
-            {student.meetings.map((meeting) => (
-              <div
-                key={meeting.id}
-                className="p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <h3
-                    className="text-sm font-medium text-[var(--accent)] hover:underline cursor-pointer"
-                    onClick={() => router.push(`/meetings/${meeting.meeting_id}`)}
-                  >
-                    {meeting.title}
-                  </h3>
-                  <span className="text-xs text-[var(--text-muted)]">
-                    {new Date(meeting.date).toLocaleDateString()}
-                  </span>
-                </div>
-                {meeting.session_notes && (
-                  <div className="mb-2">
-                    <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase">
-                      Session Notes
-                    </span>
-                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">{meeting.session_notes}</p>
+          <div className="relative">
+            {/* Timeline vertical line */}
+            <div
+              className="absolute left-[15px] top-[24px] bottom-[24px] w-[2px]"
+              style={{ backgroundColor: 'var(--border)' }}
+            />
+
+            <div className="space-y-3">
+              {sortedMeetings.map((meeting, index) => {
+                const sessionNum = index + 1;
+                const isFirst = index === 0;
+                const isExpanded = expandedSessions.has(meeting.id);
+                const insights = parseInsights(meeting.session_notes);
+
+                return (
+                  <div key={meeting.id} className="relative pl-10">
+                    {/* Timeline dot */}
+                    <div
+                      className="absolute left-[8px] top-[14px] w-[16px] h-[16px] rounded-full border-2 flex items-center justify-center z-10"
+                      style={{
+                        borderColor: isFirst ? 'var(--accent)' : 'var(--text-muted)',
+                        backgroundColor: isFirst ? 'var(--accent)' : 'var(--surface-1)',
+                      }}
+                    >
+                      {isFirst && (
+                        <div className="w-[6px] h-[6px] rounded-full bg-white" />
+                      )}
+                    </div>
+
+                    {/* Session Card */}
+                    <div
+                      className={`rounded-xl border transition-colors ${
+                        isExpanded
+                          ? 'bg-[var(--surface-1)] border-[var(--accent)]/30'
+                          : 'bg-[var(--surface-1)] border-[var(--border)] hover:border-[var(--accent)]/20'
+                      }`}
+                    >
+                      {/* Card Header (always visible) */}
+                      <button
+                        onClick={() => toggleSession(meeting.id)}
+                        className="w-full text-left px-4 py-3 flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          {/* Session number */}
+                          <span
+                            className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0"
+                            style={{
+                              color: isFirst ? 'var(--accent)' : 'var(--text-muted)',
+                              backgroundColor: isFirst
+                                ? 'color-mix(in srgb, var(--accent) 15%, transparent)'
+                                : 'var(--surface-2)',
+                            }}
+                          >
+                            #{sessionNum}
+                          </span>
+
+                          {/* Meeting title (clickable link) */}
+                          <span
+                            className="text-sm font-medium text-[var(--accent)] hover:underline truncate cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/meetings/${meeting.meeting_id}`);
+                            }}
+                          >
+                            {meeting.title}
+                          </span>
+
+                          {/* First session badge */}
+                          {isFirst && (
+                            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full uppercase shrink-0"
+                              style={{
+                                color: 'var(--accent)',
+                                backgroundColor: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+                              }}
+                            >
+                              First Session
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0 ml-2">
+                          <span className="text-xs text-[var(--text-muted)]">
+                            {formatDuration(meeting.duration)}
+                          </span>
+                          <span className="text-xs text-[var(--text-muted)]">
+                            {new Date(meeting.date).toLocaleDateString()}
+                          </span>
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="var(--text-muted)"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                          >
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
+                        </div>
+                      </button>
+
+                      {/* Expanded Content */}
+                      {isExpanded && (
+                        <div className="px-4 pb-4 border-t border-[var(--border)] space-y-4 pt-3">
+                          {insights ? (
+                            <>
+                              {/* Session Summary */}
+                              {insights.sessionSummary && (
+                                <div>
+                                  <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                                    Summary
+                                  </span>
+                                  <p className="text-sm text-[var(--text-secondary)] mt-1 leading-relaxed">
+                                    {insights.sessionSummary}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Topics Discussed */}
+                              {insights.topicsDiscussed && insights.topicsDiscussed.length > 0 && (
+                                <div>
+                                  <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                                    Topics Discussed
+                                  </span>
+                                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                    {insights.topicsDiscussed.map((topic, i) => (
+                                      <span
+                                        key={i}
+                                        className="text-xs px-2 py-0.5 rounded-full"
+                                        style={{
+                                          color: 'var(--accent)',
+                                          backgroundColor: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+                                        }}
+                                      >
+                                        {topic}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* To-Dos */}
+                              {insights.todos && insights.todos.length > 0 && (
+                                <div>
+                                  <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                                    To-Dos
+                                  </span>
+                                  <ul className="mt-1.5 space-y-1">
+                                    {insights.todos.map((todo, i) => (
+                                      <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-primary)]">
+                                        <input
+                                          type="checkbox"
+                                          disabled
+                                          className="mt-0.5"
+                                          style={{ accentColor: 'var(--accent)' }}
+                                        />
+                                        {todo}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {/* Recommendations */}
+                              {insights.recommendations && insights.recommendations.length > 0 && (
+                                <div>
+                                  <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                                    Recommendations
+                                  </span>
+                                  <ul className="mt-1.5 space-y-1">
+                                    {insights.recommendations.map((rec, i) => (
+                                      <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-secondary)]">
+                                        <span className="text-[var(--accent)] mt-0.5 shrink-0">&#8227;</span>
+                                        {rec}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {/* Progress Notes (subsequent sessions) */}
+                              {insights.progressNotes && (
+                                <div>
+                                  <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                                    Progress Notes
+                                  </span>
+                                  <p className="text-sm text-[var(--text-secondary)] mt-1 leading-relaxed">
+                                    {insights.progressNotes}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Homework */}
+                              {(insights.homework || meeting.homework) && (
+                                <div>
+                                  <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                                    Homework
+                                  </span>
+                                  <p className="text-sm text-[var(--text-primary)] mt-1 px-3 py-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
+                                    {insights.homework || meeting.homework}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Next Session Plan */}
+                              {(insights.nextSessionPlan || meeting.next_session_plan) && (
+                                <div>
+                                  <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                                    Next Session Plan
+                                  </span>
+                                  <p className="text-sm text-[var(--text-primary)] mt-1 px-3 py-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
+                                    {insights.nextSessionPlan || meeting.next_session_plan}
+                                  </p>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {/* Fallback for meetings without JSON insights */}
+                              {meeting.session_notes && (
+                                <div>
+                                  <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Session Notes</span>
+                                  <p className="text-sm text-[var(--text-secondary)] mt-1">{meeting.session_notes}</p>
+                                </div>
+                              )}
+                              {meeting.homework && (
+                                <div>
+                                  <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Homework</span>
+                                  <p className="text-sm text-[var(--text-secondary)] mt-1">{meeting.homework}</p>
+                                </div>
+                              )}
+                              {meeting.next_session_plan && (
+                                <div>
+                                  <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Next Session Plan</span>
+                                  <p className="text-sm text-[var(--text-secondary)] mt-1">{meeting.next_session_plan}</p>
+                                </div>
+                              )}
+                              {!meeting.session_notes && !meeting.homework && !meeting.next_session_plan && (
+                                <p className="text-xs text-[var(--text-muted)] italic">
+                                  No AI insights generated for this session. The meeting may not have had a transcript.
+                                </p>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-                {meeting.homework && (
-                  <div className="mb-2">
-                    <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase">
-                      Homework
-                    </span>
-                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">{meeting.homework}</p>
-                  </div>
-                )}
-                {meeting.next_session_plan && (
-                  <div>
-                    <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase">
-                      Next Session Plan
-                    </span>
-                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                      {meeting.next_session_plan}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ))}
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
