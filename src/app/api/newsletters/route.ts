@@ -53,7 +53,26 @@ async function fetchFromInoreader(token: string, from: string, to: string): Prom
   const allItems: InoreaderItem[] = [];
   const seenIds = new Set<string>();
 
-  // Fetch from each newsletter folder
+  // First: fetch from the dedicated newsletter stream
+  try {
+    const nlUrl = `https://www.inoreader.com/reader/api/0/stream/contents/user/-/state/com.google/created-by-newsletter?n=100&ot=${startTs}&nt=${endTs}`;
+    const nlRes = await fetch(nlUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (nlRes.ok) {
+      const nlData = await nlRes.json();
+      for (const item of (nlData.items || [])) {
+        if (!seenIds.has(item.id)) {
+          seenIds.add(item.id);
+          allItems.push(item);
+        }
+      }
+    }
+  } catch {
+    // Fall through to folder-based fetch
+  }
+
+  // Also fetch from newsletter folders for broader coverage
   for (const folder of NEWSLETTER_FOLDERS) {
     try {
       const encodedFolder = encodeURIComponent(folder);
