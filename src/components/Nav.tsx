@@ -5,8 +5,10 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 const links = [
+  { href: '/dashboard', label: 'Dashboard' },
   { href: '/meetings', label: 'Meetings' },
   { href: '/chat', label: 'Chat' },
+  { href: '/logs', label: 'Logs' },
   { href: '/settings', label: 'Settings' },
 ];
 
@@ -17,7 +19,7 @@ export default function Nav() {
 
   return (
     <nav className="fixed top-0 left-0 right-0 h-14 bg-[var(--surface-1)] border-b border-[var(--border)] flex items-center justify-between px-6 z-50">
-      <Link href="/meetings" className="text-lg font-semibold text-[var(--text-primary)]">
+      <Link href="/dashboard" className="text-lg font-semibold text-[var(--text-primary)]">
         Cunha&apos;s Brain
       </Link>
 

@@ -3,6 +3,7 @@ import { query } from '@/lib/db';
 import { getAnthropicClient } from '@/lib/anthropic';
 import { CHAT_SYSTEM_PROMPT } from '@/lib/prompts';
 import { parseRawContent, truncateForContext } from '@/lib/transcript';
+import { log } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,6 +65,8 @@ export async function POST(request: NextRequest) {
       'INSERT INTO chat_messages (session_id, role, content, meeting_ids) VALUES ($1, $2, $3, $4)',
       [sessionId, 'user', message, meetingIds || []]
     );
+
+    await log('chat', `Chat message in session ${sessionId}`, { sessionId, meetingIds });
 
     // Stream response
     const stream = await client.messages.stream({

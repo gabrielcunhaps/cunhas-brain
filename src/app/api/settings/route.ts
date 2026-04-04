@@ -18,6 +18,11 @@ export async function GET() {
       }
     }
 
+    // Ensure model preference has a default
+    if (!settings['anthropic_model']) {
+      settings['anthropic_model'] = 'claude-haiku-4-5-20251001';
+    }
+
     return NextResponse.json(settings);
   } catch (err) {
     console.error('Settings GET error:', err);

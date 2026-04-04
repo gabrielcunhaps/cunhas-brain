@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { log } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +50,8 @@ export async function POST(req: NextRequest) {
     );
 
     const meetingId = rows[0]?.id;
+
+    await log('webhook', `Received meeting: ${title}`, { meetingId, krispId });
 
     return NextResponse.json({
       status: 'ok',

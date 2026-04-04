@@ -3,6 +3,7 @@ import { query, queryOne } from '@/lib/db';
 import { getAnthropicClient } from '@/lib/anthropic';
 import { SUMMARIZE_PROMPT } from '@/lib/prompts';
 import { MeetingSummary } from '@/lib/types';
+import { log } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,6 +100,8 @@ export async function POST(
        ON CONFLICT (meeting_id) DO UPDATE SET summary = $2, takeaways = $3, action_items = $4, generated_at = NOW()`,
       [meetingId, parsed.summary, JSON.stringify(parsed.takeaways), JSON.stringify(parsed.actionItems)]
     );
+
+    await log('summary', `Generated summary for: ${title}`, { meetingId });
 
     const summary: MeetingSummary = {
       meetingId,
