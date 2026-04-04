@@ -65,6 +65,9 @@ export default function SettingsPage() {
   const [githubToken, setGithubToken] = useState('');
   const [githubMasked, setGithubMasked] = useState('');
   const [githubUsername, setGithubUsername] = useState('');
+  const [inoreaderToken, setInoreaderToken] = useState('');
+  const [inoreaderMasked, setInoreaderMasked] = useState('');
+  const [savingInoreader, setSavingInoreader] = useState(false);
   const [savingGithub, setSavingGithub] = useState(false);
   const [model, setModel] = useState('claude-haiku-4-5-20251001');
   const [saving, setSaving] = useState(false);
@@ -104,6 +107,7 @@ export default function SettingsPage() {
           if (data.anthropic_api_key) setCurrentMasked(data.anthropic_api_key);
           if (data.anthropic_model) setModel(data.anthropic_model);
           if (data.github_token) setGithubMasked(data.github_token);
+          if (data.inoreader_token) setInoreaderMasked(data.inoreader_token);
           if (data.workspace_prefix) {
             setNewFolder(data.workspace_prefix);
           }
@@ -176,6 +180,30 @@ export default function SettingsPage() {
       showToast('error', 'Failed to save GitHub token');
     } finally {
       setSavingGithub(false);
+    }
+  };
+
+  const handleSaveInoreaderToken = async () => {
+    if (!inoreaderToken.trim()) return;
+    setSavingInoreader(true);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'inoreader_token', value: inoreaderToken }),
+      });
+      if (res.ok) {
+        showToast('success', 'Inoreader token updated successfully');
+        setInoreaderMasked('****' + inoreaderToken.slice(-4));
+        setInoreaderToken('');
+      } else {
+        const data = await res.json();
+        showToast('error', data.error || 'Failed to update');
+      }
+    } catch {
+      showToast('error', 'Failed to save Inoreader token');
+    } finally {
+      setSavingInoreader(false);
     }
   };
 
@@ -320,6 +348,45 @@ export default function SettingsPage() {
               </div>
             </div>
 
+            {/* Inoreader */}
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                Inoreader
+              </label>
+              {inoreaderMasked ? (
+                <p className="text-xs text-[var(--text-muted)] mb-2">
+                  Connected <span className="text-[var(--success)]">●</span> Token: <span className="font-mono">{inoreaderMasked}</span>
+                </p>
+              ) : (
+                <p className="text-xs text-[var(--text-muted)] mb-2">Not connected</p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const redirectUri = encodeURIComponent(`${window.location.origin}/api/inoreader/callback`);
+                    window.location.href = `https://www.inoreader.com/oauth2/auth?client_id=1000008407&redirect_uri=${redirectUri}&response_type=code&scope=read`;
+                  }}
+                  className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium hover:bg-[var(--accent-hover)] transition-colors"
+                >
+                  {inoreaderMasked ? 'Reconnect Inoreader' : 'Connect Inoreader'}
+                </button>
+                <input
+                  type="password"
+                  value={inoreaderToken}
+                  onChange={(e) => setInoreaderToken(e.target.value)}
+                  placeholder="Or paste token manually..."
+                  className="flex-1 px-3 py-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] text-sm focus:outline-none focus:border-[var(--accent)]"
+                />
+                <button
+                  onClick={handleSaveInoreaderToken}
+                  disabled={savingInoreader || !inoreaderToken.trim()}
+                  className="px-4 py-2 rounded-lg bg-[var(--surface-3)] text-[var(--text-secondary)] text-sm font-medium hover:bg-[var(--surface-2)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors border border-[var(--border)]"
+                >
+                  {savingInoreader ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+
             {/* Model Selector */}
             <div>
               <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
@@ -397,8 +464,8 @@ export default function SettingsPage() {
             Integrations
           </h2>
           {healthLoading && !health ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {[1, 2, 3, 4].map((i) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[1, 2, 3, 4, 5].map((i) => (
                 <div
                   key={i}
                   className="bg-[var(--surface-1)] border border-[var(--border)] rounded-2xl p-5 animate-pulse h-44"
@@ -406,7 +473,7 @@ export default function SettingsPage() {
               ))}
             </div>
           ) : health ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Krisp Webhook */}
               <div className="bg-[var(--surface-1)] border border-[var(--border)] rounded-2xl p-5 flex flex-col gap-3">
                 <div className="flex items-center gap-2">
@@ -511,6 +578,29 @@ export default function SettingsPage() {
                       </p>
                     </div>
                   )}
+                </div>
+              </div>
+
+              {/* Inoreader */}
+              <div className="bg-[var(--surface-1)] border border-[var(--border)] rounded-2xl p-5 flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <StatusDot color={inoreaderMasked ? 'green' : 'red'} />
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                    Inoreader
+                  </h3>
+                </div>
+                <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                  Daily newsletter summaries from your RSS feeds
+                </p>
+                <div className="mt-auto space-y-2">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+                      Status
+                    </p>
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      {inoreaderMasked ? 'Token configured' : 'Not configured'}
+                    </p>
+                  </div>
                 </div>
               </div>
 

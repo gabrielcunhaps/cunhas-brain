@@ -11,7 +11,7 @@ export async function GET() {
     for (const row of rows) {
       const key = row.key as string;
       const val = row.value as string;
-      if (key.includes('key') || key.includes('secret')) {
+      if (key.includes('key') || key.includes('secret') || key.includes('token')) {
         settings[key] = val.length > 4 ? '****' + val.slice(-4) : '****';
       } else {
         settings[key] = val;

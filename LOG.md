@@ -2,6 +2,16 @@
 
 ### 2026-03-29
 - **Project**: cunhas-brain
+- **Change**: Built Inoreader Newsletters feature. Created API route (`src/app/api/newsletters/route.ts`) with GET (fetch from Inoreader API with date range, cache in DB) and POST (generate AI summary with Claude Haiku). Created `NewslettersView` component with quick date range buttons, custom date pickers, daily feed view grouped by date, and AI summary view. Created newsletters page at `/newsletters`. Added Newsletters link to Nav between Chat and GitHub. Added Inoreader token input and integration card to Settings page. Updated settings API to mask tokens.
+- **Outcome**: Full newsletter aggregation system at /newsletters with Inoreader RSS feed integration, local caching, and AI-powered summaries.
+
+### 2026-03-29
+- **Project**: cunhas-brain
+- **Change**: Built Student Management feature. Created 3 API routes (students CRUD, student detail with meetings, attach meeting with AI processing), 2 components (StudentList grid with search/add form, StudentDetail with profile/learning plan/meeting history/attach meeting), 2 pages (students list, student detail), and added Students link to Nav. AI auto-generates student profile and learning plan on first meeting attachment using Claude Haiku, and generates session notes/homework/next session plan on subsequent meetings.
+- **Outcome**: Full student management system with AI-powered learning plan generation integrated into the app at /students.
+
+### 2026-03-29
+- **Project**: cunhas-brain
 - **Change**: Built desktop notification system for new meetings. Created API endpoint (`src/app/api/notifications/route.ts`) with GET (polls for new meetings since timestamp, auto-generates summaries) and POST (tracks notification actions). Created local Mac notifier script (`scripts/notifier.js`) that polls the API and shows native macOS notifications with dialog action buttons. Created LaunchAgent installer (`scripts/install-notifier.sh`). Added `/api/notifications` to PUBLIC_PATHS in middleware.
 - **Outcome**: After a Krisp meeting ends, the notifier polls every 5 minutes, auto-generates summaries if missing, and shows a macOS notification with summary and todos. Meetings with action items get a dialog with "Open in Browser" button.
 
