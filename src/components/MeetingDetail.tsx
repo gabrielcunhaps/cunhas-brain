@@ -16,6 +16,16 @@ export default function MeetingDetail({ meetingId }: MeetingDetailProps) {
   const [meeting, setMeeting] = useState<MeetingDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [claudeCopied, setClaudeCopied] = useState(false);
+
+  const sendToClaudeAI = () => {
+    if (!meeting) return;
+    const prompt = `Here is a transcript from my meeting "${meeting.title}" on ${formatDate(meeting.date)}.\n\nPlease review it and help me with any follow-ups, action items, or questions I should address.\n\n---\n\nTRANSCRIPT:\n\n${meeting.rawContent.slice(0, 80000)}`;
+    navigator.clipboard.writeText(prompt);
+    setClaudeCopied(true);
+    setTimeout(() => setClaudeCopied(false), 3000);
+    window.open('https://claude.ai/new', '_blank');
+  };
 
   useEffect(() => {
     async function fetchMeeting() {
@@ -91,6 +101,12 @@ export default function MeetingDetail({ meetingId }: MeetingDetailProps) {
               Speakers: {meeting.speakers.map((s) => s.name || s.first_name || `Speaker ${s.index}`).filter(Boolean).join(', ')}
             </span>
           )}
+          <button
+            onClick={sendToClaudeAI}
+            className="ml-auto px-3 py-1.5 text-xs rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors font-medium"
+          >
+            {claudeCopied ? 'Copied! Paste in Claude.ai →' : 'Send to Claude.ai'}
+          </button>
         </div>
       </div>
 

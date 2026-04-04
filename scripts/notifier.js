@@ -150,15 +150,29 @@ async function showActionPopup(meeting, todos) {
   // Second popup: Choose action
   const result = runScript(`
 try
-  set r to display dialog "ACTION ITEMS from: ${title.replace(/"/g, "'")}\n\n${todoList.replace(/\n/g, '\\n').replace(/"/g, "'")}\n\nChoose an action:" buttons {"Open Dashboard", "Copy Claude Cmd", "Open VS Code"} default button "Copy Claude Cmd" with title "Cunhas Brain - Take Action" giving up after 120
+  set r to display dialog "ACTION ITEMS from: ${title.replace(/"/g, "'")}\n\n${todoList.replace(/\n/g, '\\n').replace(/"/g, "'")}\n\nChoose an action:" buttons {"Send to Claude.ai", "Copy Claude Cmd", "Open VS Code"} default button "Copy Claude Cmd" with title "Cunhas Brain - Take Action" giving up after 120
   return button returned of r
 on error
   return "timeout"
 end try`);
 
-  if (result === 'Open Dashboard') {
-    execSync(`open "${APP_URL}/dashboard"`);
-    console.log(`[${ts()}] Opened dashboard`);
+  if (result === 'Send to Claude.ai') {
+    // Fetch full transcript then copy with prompt
+    let transcript = '';
+    try {
+      const mRes = await fetch(`${APP_URL}/api/meetings/${meeting.id}`, { headers: { Cookie: authCookie } });
+      if (mRes.ok) {
+        const mData = await mRes.json();
+        transcript = clean(mData.rawContent || '').slice(0, 80000);
+      }
+    } catch {}
+    const prompt = `Here is a transcript from my meeting "${title}".\n\nPlease review it and help me with any follow-ups, action items, or questions I should address.\n\n---\n\nTRANSCRIPT:\n\n${transcript}`;
+    const pbcopy = require('child_process').spawn('pbcopy');
+    pbcopy.stdin.write(prompt);
+    pbcopy.stdin.end();
+    execSync('open "https://claude.ai/new"');
+    runScript(`display dialog "Transcript copied to clipboard!\n\nPaste it in Claude.ai to start chatting." buttons {"OK"} default button "OK" with title "Cunhas Brain" giving up after 10`);
+    console.log(`[${ts()}] Sent to Claude.ai: ${title}`);
 
   } else if (result === 'Copy Claude Cmd' || result === 'Open VS Code') {
     // Pick a folder
