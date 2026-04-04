@@ -2,20 +2,26 @@
 
 /**
  * Cunha's Brain - Meeting Notifier
- * Polls for new meetings and shows macOS notifications
- *
- * No npm dependencies needed - uses built-in fetch and child_process.
+ * Polls for new meetings and shows interactive macOS popup dialogs
+ * with ability to send todos to VS Code / Claude Code
  *
  * Run:   node scripts/notifier.js
- * Or install as LaunchAgent: bash scripts/install-notifier.sh
+ * Install: bash scripts/install-notifier.sh
  */
+
+const { execFileSync, execSync } = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 const APP_URL = process.env.CUNHAS_BRAIN_URL || 'https://cunhas-brain.vercel.app';
 const APP_PASSWORD = process.env.CUNHAS_BRAIN_PASSWORD || 'cunhasbrain2026';
-const POLL_INTERVAL = 5 * 60 * 1000; // 5 minutes
+const POLL_INTERVAL = 2 * 60 * 1000;
 
-let lastCheck = new Date().toISOString();
+let lastCheck = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 let authCookie = '';
+let workspacePrefix = '~/Desktop/workspace/';
+let repoNames = [];
 
 async function login() {
   const res = await fetch(`${APP_URL}/api/auth`, {
@@ -23,15 +29,31 @@ async function login() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ password: APP_PASSWORD }),
   });
-
   const cookies = res.headers.get('set-cookie');
-  if (cookies) {
-    authCookie = cookies.split(';')[0];
-  }
+  if (cookies) authCookie = cookies.split(';')[0];
+  if (!res.ok) throw new Error(`Login failed: ${res.status}`);
+}
 
-  if (!res.ok) {
-    throw new Error(`Login failed with status ${res.status}`);
-  }
+async function loadSettings() {
+  try {
+    const res = await fetch(`${APP_URL}/api/settings`, {
+      headers: { Cookie: authCookie },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.workspace_prefix) workspacePrefix = data.workspace_prefix;
+    }
+  } catch {}
+
+  try {
+    const res = await fetch(`${APP_URL}/api/github?type=repos`, {
+      headers: { Cookie: authCookie },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      repoNames = (data.repos || []).map((r) => r.name).slice(0, 15);
+    }
+  } catch {}
 }
 
 async function checkNewMeetings() {
@@ -40,108 +62,183 @@ async function checkNewMeetings() {
       `${APP_URL}/api/notifications?since=${encodeURIComponent(lastCheck)}`,
       { headers: { Cookie: authCookie } }
     );
-
-    if (res.status === 401) {
-      await login();
-      return checkNewMeetings();
-    }
-
-    if (!res.ok) {
-      console.error(`[${new Date().toISOString()}] Poll returned status ${res.status}`);
-      return;
-    }
+    if (res.status === 401) { await login(); return checkNewMeetings(); }
+    if (!res.ok) return;
 
     const data = await res.json();
-    const meetings = data.meetings || [];
-
-    for (const meeting of meetings) {
-      showNotification(meeting);
+    for (const meeting of data.meetings || []) {
+      await showPopup(meeting);
     }
-
     lastCheck = new Date().toISOString();
   } catch (err) {
-    console.error(`[${new Date().toISOString()}] Poll error:`, err.message);
+    console.error(`[${ts()}] Poll error:`, err.message);
   }
 }
 
-function escapeAppleScript(str) {
+function ts() { return new Date().toISOString(); }
+
+function clean(str) {
   if (!str) return '';
-  return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+  return str.replace(/[^\x20-\x7E\n]/g, '').replace(/"/g, "'").replace(/\\/g, '').trim();
 }
 
-function showNotification(meeting) {
-  const { execSync } = require('child_process');
-
-  const title = meeting.title || 'New Meeting';
-  const summary = meeting.summary
-    ? meeting.summary.slice(0, 200)
-    : 'Meeting transcript available';
-  const todos = (meeting.actionItems || [])
-    .slice(0, 3)
-    .map((a) => (typeof a === 'string' ? a : a.task || JSON.stringify(a)))
-    .join('\\n\u2022 ');
-
-  const body = todos ? `${summary}\\n\\nTodos:\\n\u2022 ${todos}` : summary;
-
-  // Show macOS notification
+function runScript(script) {
+  const p = path.join(os.tmpdir(), 'cunhas-brain-popup.scpt');
+  fs.writeFileSync(p, script);
   try {
-    execSync(
-      `osascript -e 'display notification "${escapeAppleScript(body).slice(0, 500)}" with title "Cunha\\'s Brain" subtitle "${escapeAppleScript(title)}"'`
-    );
+    return execFileSync('osascript', [p], { encoding: 'utf-8', timeout: 180000 }).trim();
   } catch {
-    console.log(`[${new Date().toISOString()}] Notification fallback: ${title}`);
+    return 'timeout';
+  }
+}
+
+async function showPopup(meeting) {
+  const title = clean(meeting.title || 'New Meeting');
+  const summary = clean(meeting.summary || 'Meeting transcript available').slice(0, 300);
+
+  const todos = (meeting.actionItems || []).slice(0, 5).map((a, i) => {
+    const text = clean(typeof a === 'string' ? a : a.task || '');
+    const assignee = typeof a === 'object' && a.assignee ? ` (${clean(a.assignee)})` : '';
+    return `${i + 1}. ${text}${assignee}`;
+  }).filter(Boolean);
+
+  const dialogText = [
+    `MEETING: ${title}`,
+    '',
+    'SUMMARY:',
+    summary,
+    '',
+    todos.length > 0 ? `ACTION ITEMS:\n${todos.join('\n')}` : 'No action items.',
+  ].join('\n');
+
+  // First popup: Summary with 3 buttons
+  const result = runScript(`
+try
+  set r to display dialog "${dialogText.replace(/\n/g, '\\n').replace(/"/g, "'")}" buttons {"Dismiss", "Take Action", "Open Meeting"} default button "Take Action" with title "Cunhas Brain - New Meeting" giving up after 120
+  return button returned of r
+on error
+  return "timeout"
+end try`);
+
+  if (result === 'Open Meeting') {
+    execSync(`open "${APP_URL}/meetings/${meeting.id}"`);
+    console.log(`[${ts()}] Opened meeting: ${title}`);
+
+  } else if (result === 'Take Action') {
+    await showActionPopup(meeting, todos);
+
+  } else {
+    console.log(`[${ts()}] Dismissed: ${title}`);
+  }
+}
+
+async function showActionPopup(meeting, todos) {
+  const title = clean(meeting.title || 'New Meeting');
+
+  if (todos.length === 0) {
+    execSync(`open "${APP_URL}/dashboard"`);
+    return;
   }
 
-  // Show a dialog with action buttons if there are action items
-  if (meeting.actionItems && meeting.actionItems.length > 0) {
-    try {
-      const dialogSummary = escapeAppleScript(summary).slice(0, 300);
-      const dialogTitle = escapeAppleScript(title);
-      const itemCount = meeting.actionItems.length;
+  // Build todo list for display
+  const todoList = todos.join('\n');
 
-      const result = execSync(
-        `osascript -e 'set theResult to display dialog "Meeting: ${dialogTitle}\\n\\n${dialogSummary}\\n\\nAction Items: ${itemCount}" buttons {"Dismiss", "Open in Browser"} default button "Open in Browser" with title "Cunha\\'s Brain" giving up after 30
-return button returned of theResult'`,
-        { encoding: 'utf-8' }
-      ).trim();
+  // Second popup: Choose action
+  const result = runScript(`
+try
+  set r to display dialog "ACTION ITEMS from: ${title.replace(/"/g, "'")}\n\n${todoList.replace(/\n/g, '\\n').replace(/"/g, "'")}\n\nChoose an action:" buttons {"Open Dashboard", "Copy Claude Cmd", "Open VS Code"} default button "Copy Claude Cmd" with title "Cunhas Brain - Take Action" giving up after 120
+  return button returned of r
+on error
+  return "timeout"
+end try`);
 
-      if (result === 'Open in Browser') {
-        execSync(`open "${APP_URL}/meetings/${meeting.id}"`);
-        reportAction('open', meeting.id);
-      } else {
-        reportAction('dismiss', meeting.id);
+  if (result === 'Open Dashboard') {
+    execSync(`open "${APP_URL}/dashboard"`);
+    console.log(`[${ts()}] Opened dashboard`);
+
+  } else if (result === 'Copy Claude Cmd' || result === 'Open VS Code') {
+    // Pick a folder
+    let folder = repoNames[0] || '';
+    if (repoNames.length > 1) {
+      const folderList = repoNames.map((r, i) => `${i + 1}. ${r}`).join('\n');
+      const folderResult = runScript(`
+try
+  set r to display dialog "Select project folder:\n\n${folderList.replace(/\n/g, '\\n')}\n\nEnter number or folder name:" default answer "1" buttons {"Cancel", "OK"} default button "OK" with title "Cunhas Brain - Select Folder" giving up after 60
+  return text returned of r
+on error
+  return ""
+end try`);
+
+      if (folderResult) {
+        const num = parseInt(folderResult);
+        if (!isNaN(num) && num >= 1 && num <= repoNames.length) {
+          folder = repoNames[num - 1];
+        } else if (folderResult.trim()) {
+          folder = folderResult.trim();
+        }
       }
-    } catch {
-      // Dialog was dismissed or timed out
     }
-  }
 
-  console.log(`[${new Date().toISOString()}] Notified: ${title}`);
-}
+    // Ask for notes
+    const notes = runScript(`
+try
+  set r to display dialog "Add notes/context for Claude Code (optional):" default answer "" buttons {"Skip", "Add"} default button "Add" with title "Cunhas Brain - Notes" giving up after 60
+  if button returned of r is "Add" then
+    return text returned of r
+  else
+    return ""
+  end if
+on error
+  return ""
+end try`);
 
-async function reportAction(action, meetingId) {
-  try {
-    await fetch(`${APP_URL}/api/notifications`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Cookie: authCookie },
-      body: JSON.stringify({ action, meetingId }),
-    });
-  } catch {
-    // Best-effort reporting
+    // Build the command
+    const allTodos = todos.map(t => t.replace(/^\d+\.\s*/, '')).join('; ');
+    let prompt = allTodos;
+    if (notes) prompt += `\n\nAdditional context: ${notes}`;
+    prompt = prompt.replace(/"/g, '\\"');
+
+    const prefix = workspacePrefix.endsWith('/') ? workspacePrefix : workspacePrefix + '/';
+    const fullPath = folder ? `${prefix}${folder}` : '';
+    const cmd = fullPath
+      ? `claude -p "${prompt}" --cwd ${fullPath}`
+      : `claude -p "${prompt}"`;
+
+    if (result === 'Copy Claude Cmd') {
+      // Copy to clipboard
+      const pbcopy = require('child_process').spawn('pbcopy');
+      pbcopy.stdin.write(cmd);
+      pbcopy.stdin.end();
+
+      runScript(`display dialog "Command copied to clipboard!\n\n${cmd.slice(0, 200).replace(/"/g, "'").replace(/\n/g, '\\n')}..." buttons {"OK"} default button "OK" with title "Cunhas Brain" giving up after 10`);
+      console.log(`[${ts()}] Copied Claude cmd for: ${folder}`);
+
+    } else {
+      // Open VS Code + copy command
+      if (fullPath) {
+        execSync(`open -a "Visual Studio Code" "${fullPath.replace(/~/g, os.homedir())}"`);
+      }
+      const pbcopy = require('child_process').spawn('pbcopy');
+      pbcopy.stdin.write(cmd);
+      pbcopy.stdin.end();
+
+      runScript(`display dialog "VS Code opened. Claude command copied to clipboard!\n\nPaste in terminal to run." buttons {"OK"} default button "OK" with title "Cunhas Brain" giving up after 10`);
+      console.log(`[${ts()}] Opened VS Code: ${fullPath}`);
+    }
   }
 }
 
 async function main() {
-  console.log(`Cunha's Brain Notifier started`);
+  console.log(`Cunhas Brain Notifier started`);
   console.log(`Polling ${APP_URL} every ${POLL_INTERVAL / 1000}s`);
 
   await login();
   console.log('Authenticated');
 
-  // Initial check
-  await checkNewMeetings();
+  await loadSettings();
+  console.log(`Workspace: ${workspacePrefix} | Repos: ${repoNames.length}`);
 
-  // Poll loop
+  await checkNewMeetings();
   setInterval(checkNewMeetings, POLL_INTERVAL);
 }
 
