@@ -8,6 +8,7 @@ const links = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/meetings', label: 'Meetings' },
   { href: '/chat', label: 'Chat' },
+  { href: '/github', label: 'GitHub' },
   { href: '/logs', label: 'Logs' },
   { href: '/settings', label: 'Settings' },
 ];

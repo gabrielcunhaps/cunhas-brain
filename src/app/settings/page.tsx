@@ -62,6 +62,10 @@ const MODELS = [
 export default function SettingsPage() {
   const [apiKey, setApiKey] = useState('');
   const [currentMasked, setCurrentMasked] = useState('');
+  const [githubToken, setGithubToken] = useState('');
+  const [githubMasked, setGithubMasked] = useState('');
+  const [githubUsername, setGithubUsername] = useState('');
+  const [savingGithub, setSavingGithub] = useState(false);
   const [model, setModel] = useState('claude-haiku-4-5-20251001');
   const [saving, setSaving] = useState(false);
   const [savingModel, setSavingModel] = useState(false);
@@ -98,6 +102,7 @@ export default function SettingsPage() {
           const data = await res.json();
           if (data.anthropic_api_key) setCurrentMasked(data.anthropic_api_key);
           if (data.anthropic_model) setModel(data.anthropic_model);
+          if (data.github_token) setGithubMasked(data.github_token);
         }
       } catch (err) {
         console.error('Failed to load settings:', err);
@@ -105,6 +110,13 @@ export default function SettingsPage() {
     }
     loadSettings();
     fetchHealth();
+    // Fetch GitHub username if token is configured
+    fetch('/api/github?type=activity')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.username) setGithubUsername(data.username);
+      })
+      .catch(() => {});
   }, [fetchHealth]);
 
   const handleSaveKey = async () => {
@@ -129,6 +141,37 @@ export default function SettingsPage() {
       showToast('error', 'Failed to save API key');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveGithubToken = async () => {
+    if (!githubToken.trim()) return;
+    setSavingGithub(true);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'github_token', value: githubToken }),
+      });
+      if (res.ok) {
+        showToast('success', 'GitHub token updated successfully');
+        setGithubMasked('****' + githubToken.slice(-4));
+        setGithubToken('');
+        // Fetch username with new token
+        fetch('/api/github?type=activity')
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.username) setGithubUsername(data.username);
+          })
+          .catch(() => {});
+      } else {
+        const data = await res.json();
+        showToast('error', data.error || 'Failed to update');
+      }
+    } catch {
+      showToast('error', 'Failed to save GitHub token');
+    } finally {
+      setSavingGithub(false);
     }
   };
 
@@ -244,6 +287,34 @@ export default function SettingsPage() {
               </div>
             </div>
 
+            {/* GitHub Token */}
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                GitHub Personal Access Token
+              </label>
+              {githubMasked && (
+                <p className="text-xs text-[var(--text-muted)] mb-2">
+                  Current: <span className="font-mono">{githubMasked}</span>
+                </p>
+              )}
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={githubToken}
+                  onChange={(e) => setGithubToken(e.target.value)}
+                  placeholder="ghp_..."
+                  className="flex-1 px-3 py-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] text-sm focus:outline-none focus:border-[var(--accent)]"
+                />
+                <button
+                  onClick={handleSaveGithubToken}
+                  disabled={savingGithub || !githubToken.trim()}
+                  className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {savingGithub ? 'Saving...' : 'Update'}
+                </button>
+              </div>
+            </div>
+
             {/* Model Selector */}
             <div>
               <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
@@ -285,8 +356,8 @@ export default function SettingsPage() {
             Integrations
           </h2>
           {healthLoading && !health ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {[1, 2, 3].map((i) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map((i) => (
                 <div
                   key={i}
                   className="bg-[var(--surface-1)] border border-[var(--border)] rounded-2xl p-5 animate-pulse h-44"
@@ -294,7 +365,7 @@ export default function SettingsPage() {
               ))}
             </div>
           ) : health ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Krisp Webhook */}
               <div className="bg-[var(--surface-1)] border border-[var(--border)] rounded-2xl p-5 flex flex-col gap-3">
                 <div className="flex items-center gap-2">
@@ -366,6 +437,39 @@ export default function SettingsPage() {
                       {health.anthropic.configured ? 'API key configured' : 'Not configured'}
                     </p>
                   </div>
+                </div>
+              </div>
+
+              {/* GitHub */}
+              <div className="bg-[var(--surface-1)] border border-[var(--border)] rounded-2xl p-5 flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <StatusDot color={githubMasked ? 'green' : 'red'} />
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                    GitHub
+                  </h3>
+                </div>
+                <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                  View repositories, commits, and pull requests
+                </p>
+                <div className="mt-auto space-y-2">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+                      Status
+                    </p>
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      {githubMasked ? 'Token configured' : 'Not configured'}
+                    </p>
+                  </div>
+                  {githubUsername && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+                        Username
+                      </p>
+                      <p className="text-xs text-[var(--text-secondary)]">
+                        {githubUsername}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 

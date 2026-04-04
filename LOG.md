@@ -2,6 +2,11 @@
 
 ### 2026-03-29
 - **Project**: cunhas-brain
+- **Change**: Built GitHub feature. Created 3 new files: GitHub API route (`src/app/api/github/route.ts`) with repos and activity endpoints using GitHub API, GitHubView component (`src/components/GitHubView.tsx`) with tabbed repos grid and activity feed, and GitHub page (`src/app/github/page.tsx`). Modified `src/components/Nav.tsx` to add GitHub link and `src/app/settings/page.tsx` to add GitHub token input and integration card.
+- **Outcome**: GitHub page shows user repositories (2-col grid with language badges, stars, issues) and activity feed (color-coded event types) with auto-refresh. Token management integrated into Settings page with masked display and username resolution.
+
+### 2026-03-29
+- **Project**: cunhas-brain
 - **Change**: Built Dashboard feature. Created 3 new files: todos API route (`src/app/api/todos/route.ts`) with GET/PATCH for action items from meeting summaries, Dashboard component (`src/components/Dashboard.tsx`) with stats bar, filter tabs, search, and todo toggling, and dashboard page (`src/app/dashboard/page.tsx`). Modified `src/app/page.tsx` to redirect to `/dashboard` and `src/components/Nav.tsx` to add Dashboard and Logs links.
 - **Outcome**: Dashboard is the new landing page showing aggregated action items from all meetings with status tracking, filtering, and search.
 

@@ -13,13 +13,16 @@ interface TodoItem {
 }
 
 type FilterTab = 'all' | 'open' | 'done';
+type AssigneeFilter = 'everyone' | 'me' | 'others';
 
 export default function Dashboard() {
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterTab>('all');
+  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('everyone');
   const [search, setSearch] = useState('');
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
+  const [copied, setCopied] = useState<string | null>(null);
 
   const fetchTodos = useCallback(async () => {
     try {
@@ -78,9 +81,17 @@ export default function Dashboard() {
   const openCount = todos.filter((t) => !t.done).length;
   const doneCount = todos.filter((t) => t.done).length;
 
+  const isMe = (assignee: string | null) => {
+    if (!assignee) return false;
+    const lower = assignee.toLowerCase();
+    return lower.includes('gabriel') || lower.includes('cunha') || lower.includes('gabe');
+  };
+
   const filtered = todos.filter((t) => {
     if (filter === 'open' && t.done) return false;
     if (filter === 'done' && !t.done) return false;
+    if (assigneeFilter === 'me' && !isMe(t.assignee)) return false;
+    if (assigneeFilter === 'others' && (isMe(t.assignee) || !t.assignee)) return false;
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -91,6 +102,21 @@ export default function Dashboard() {
     }
     return true;
   });
+
+  const generateClaudeCommand = (todo: TodoItem) => {
+    return `claude -p "${todo.text.replace(/"/g, '\\"')}"`;
+  };
+
+  const copyClaudeCommand = (todo: TodoItem) => {
+    navigator.clipboard.writeText(generateClaudeCommand(todo));
+    setCopied(todo.id);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const openInVSCode = (todo: TodoItem) => {
+    const prompt = encodeURIComponent(todo.text);
+    window.open(`vscode://file?prompt=${prompt}`, '_blank');
+  };
 
   const formatDate = (dateStr: string) => {
     try {
@@ -152,6 +178,36 @@ export default function Dashboard() {
             }}
           >
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {/* Assignee Filter */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.5rem',
+          marginBottom: '1rem',
+        }}
+      >
+        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', alignSelf: 'center', marginRight: '0.25rem' }}>Assignee:</span>
+        {(['everyone', 'me', 'others'] as AssigneeFilter[]).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setAssigneeFilter(tab)}
+            style={{
+              padding: '0.25rem 0.625rem',
+              borderRadius: '0.375rem',
+              border: 'none',
+              fontSize: '0.75rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              backgroundColor: assigneeFilter === tab ? 'var(--accent)' : 'transparent',
+              color: assigneeFilter === tab ? 'white' : 'var(--text-secondary)',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            {tab === 'me' ? 'Mine' : tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
         ))}
       </div>
@@ -231,6 +287,39 @@ export default function Dashboard() {
                   <span style={{ color: 'var(--text-muted)', marginLeft: '0.5rem' }}>
                     {formatDate(todo.meetingDate)}
                   </span>
+                </div>
+                {/* Claude Code Actions */}
+                <div style={{ display: 'flex', gap: '0.375rem', marginTop: '0.5rem' }}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); copyClaudeCommand(todo); }}
+                    style={{
+                      padding: '0.2rem 0.5rem',
+                      borderRadius: '0.25rem',
+                      border: '1px solid var(--border)',
+                      backgroundColor: 'var(--surface-2)',
+                      color: copied === todo.id ? 'var(--success)' : 'var(--text-muted)',
+                      fontSize: '0.675rem',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {copied === todo.id ? 'Copied!' : 'Copy Claude cmd'}
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openInVSCode(todo); }}
+                    style={{
+                      padding: '0.2rem 0.5rem',
+                      borderRadius: '0.25rem',
+                      border: '1px solid var(--border)',
+                      backgroundColor: 'var(--surface-2)',
+                      color: 'var(--text-muted)',
+                      fontSize: '0.675rem',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    Open in VS Code
+                  </button>
                 </div>
               </div>
             </div>
