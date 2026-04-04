@@ -5,6 +5,14 @@ import { parseRawContent, parseContentArray } from '@/lib/transcript';
 
 export const dynamic = 'force-dynamic';
 
+function parseJsonField<T>(val: unknown, fallback: T): T {
+  if (!val) return fallback;
+  if (typeof val === 'string') {
+    try { return JSON.parse(val); } catch { return fallback; }
+  }
+  return val as T;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -22,10 +30,13 @@ export async function GET(
     }
 
     const rawContent = (row.raw_content as string) || '';
-    const contentArray = (row.content as { text: string; speaker: string; speakerIndex: number }[]) || [];
+    const contentArray = parseJsonField<{ text: string; speaker: string; speakerIndex: number }[]>(row.content, []);
+    const speakers = parseJsonField<{ name: string; index: number }[]>(row.speakers, []);
+    const participants = parseJsonField<string[]>(row.participants, []);
+    const date = row.date ? new Date(row.date as string).toISOString() : new Date().toISOString();
 
     let segments: SpeakerSegment[] = [];
-    if (contentArray.length > 0) {
+    if (Array.isArray(contentArray) && contentArray.length > 0) {
       segments = parseContentArray(contentArray);
     } else if (rawContent) {
       segments = parseRawContent(rawContent);
@@ -34,10 +45,10 @@ export async function GET(
     const detail: MeetingDetail = {
       id: row.id as number,
       title: (row.title as string) || 'Untitled Meeting',
-      date: row.date as string,
+      date,
       duration: (row.duration as number) || 0,
-      participants: (row.participants as string[]) || [],
-      speakers: (row.speakers as { name: string; index: number }[]) || [],
+      participants,
+      speakers,
       hasTranscript: rawContent.length > 0 || contentArray.length > 0,
       rawContent,
       segments,

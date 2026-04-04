@@ -1,11 +1,15 @@
+'use client';
+
+import { useParams } from 'next/navigation';
 import MeetingDetail from '@/components/MeetingDetail';
 
-interface MeetingPageProps {
-  params: { id: string };
-}
+export default function MeetingPage() {
+  const params = useParams();
+  const meetingId = parseInt(params.id as string, 10);
 
-export default function MeetingPage({ params }: MeetingPageProps) {
-  const meetingId = parseInt(params.id, 10);
+  if (isNaN(meetingId)) {
+    return <div className="max-w-6xl mx-auto px-4 py-8 text-[var(--danger)]">Invalid meeting ID</div>;
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
