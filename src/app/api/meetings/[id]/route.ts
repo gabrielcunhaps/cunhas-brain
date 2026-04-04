@@ -31,8 +31,20 @@ export async function GET(
 
     const rawContent = (row.raw_content as string) || '';
     const contentArray = parseJsonField<{ text: string; speaker: string; speakerIndex: number }[]>(row.content, []);
-    const speakers = parseJsonField<{ name: string; index: number }[]>(row.speakers, []);
-    const participants = parseJsonField<string[]>(row.participants, []);
+    const rawSpeakers = parseJsonField<Record<string, unknown>[]>(row.speakers, []);
+    const speakers = rawSpeakers.map((s) => ({
+      name: String(s.name || s.first_name || (s.first_name && s.last_name ? `${s.first_name} ${s.last_name}` : '') || `Speaker ${s.index || '?'}`),
+      index: Number(s.index || 0),
+    }));
+    const rawParticipants = parseJsonField<unknown[]>(row.participants, []);
+    const participants = rawParticipants.map((p) => {
+      if (typeof p === 'string') return p;
+      if (typeof p === 'object' && p !== null) {
+        const obj = p as Record<string, unknown>;
+        return String(obj.name || obj.first_name || obj.email || 'Unknown');
+      }
+      return String(p);
+    });
     const date = row.date ? new Date(row.date as string).toISOString() : new Date().toISOString();
 
     let segments: SpeakerSegment[] = [];

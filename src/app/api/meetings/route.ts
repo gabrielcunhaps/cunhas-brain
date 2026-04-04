@@ -42,15 +42,29 @@ export async function GET(request: NextRequest) {
 
     const rows = await query(sql, params);
 
-    const meetings = rows.map((row: Record<string, unknown>) => ({
-      id: row.id,
-      title: row.title,
-      date: row.date,
-      duration: row.duration || 0,
-      participants: row.participants || [],
-      speakers: row.speakers || [],
-      hasTranscript: row.has_transcript || false,
-    }));
+    const meetings = rows.map((row: Record<string, unknown>) => {
+      const rawSpeakers = (typeof row.speakers === 'string' ? JSON.parse(row.speakers) : row.speakers) || [];
+      const rawParticipants = (typeof row.participants === 'string' ? JSON.parse(row.participants) : row.participants) || [];
+      return {
+        id: row.id,
+        title: row.title,
+        date: row.date ? new Date(row.date as string).toISOString() : new Date().toISOString(),
+        duration: row.duration || 0,
+        participants: rawParticipants.map((p: unknown) => {
+          if (typeof p === 'string') return p;
+          if (typeof p === 'object' && p !== null) {
+            const o = p as Record<string, unknown>;
+            return String(o.name || o.first_name || o.email || 'Unknown');
+          }
+          return String(p);
+        }),
+        speakers: rawSpeakers.map((s: Record<string, unknown>) => ({
+          name: String(s.name || s.first_name || `Speaker ${s.index || '?'}`),
+          index: Number(s.index || 0),
+        })),
+        hasTranscript: row.has_transcript || false,
+      };
+    });
 
     return NextResponse.json(meetings);
   } catch (err) {
