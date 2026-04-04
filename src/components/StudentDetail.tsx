@@ -438,7 +438,12 @@ export default function StudentDetail({ studentId }: { studentId: string }) {
                 className="p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]"
               >
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-medium text-[var(--text-primary)]">{meeting.title}</h3>
+                  <h3
+                    className="text-sm font-medium text-[var(--accent)] hover:underline cursor-pointer"
+                    onClick={() => router.push(`/meetings/${meeting.meeting_id}`)}
+                  >
+                    {meeting.title}
+                  </h3>
                   <span className="text-xs text-[var(--text-muted)]">
                     {new Date(meeting.date).toLocaleDateString()}
                   </span>

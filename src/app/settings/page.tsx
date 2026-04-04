@@ -363,8 +363,7 @@ export default function SettingsPage() {
               <div className="flex gap-2">
                 <button
                   onClick={() => {
-                    const redirectUri = encodeURIComponent(`${window.location.origin}/api/inoreader/callback`);
-                    window.location.href = `https://www.inoreader.com/oauth2/auth?client_id=1000008407&redirect_uri=${redirectUri}&response_type=code&scope=read`;
+                    window.location.href = 'https://www.inoreader.com/oauth2/auth?client_id=1000008407&redirect_uri=https%3A%2F%2Fcunhas-brain.vercel.app%2Fapi%2Finoreader%2Fcallback&response_type=code&scope=read';
                   }}
                   className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium hover:bg-[var(--accent-hover)] transition-colors"
                 >

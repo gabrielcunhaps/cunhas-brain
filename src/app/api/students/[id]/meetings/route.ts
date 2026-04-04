@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { getAnthropicClient } from '@/lib/anthropic';
+import { log } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
-    const { id: studentId } = await params;
+    const studentId = params.id;
     const body = await request.json();
     const { meetingId, sessionNotes, homework, nextSessionPlan } = body;
 
@@ -52,9 +53,12 @@ export async function POST(
 
     const transcript = (meeting.raw_content as string) || '';
 
+    await log('summary', `Attaching meeting ${meetingId} to student ${studentId} (meeting #${meetingCount})`, { transcript: transcript.length });
+
     if (meetingCount === 1 && transcript) {
       // First meeting: generate learning plan and profile
       try {
+        await log('summary', `Generating learning plan for ${student.name}`);
         const anthropic = await getAnthropicClient();
         const response = await anthropic.messages.create({
           model: 'claude-haiku-4-5-20251001',
@@ -76,16 +80,19 @@ Return as JSON only, no markdown: { "profile": { "background": "...", "goals": "
 
         const textBlock = response.content.find((b) => b.type === 'text');
         if (textBlock && textBlock.type === 'text') {
-          const parsed = JSON.parse(textBlock.text);
+          const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+          const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : textBlock.text);
 
           await queryOne(
             `UPDATE students SET profile = $1, learning_plan = $2, updated_at = NOW() WHERE id = $3 RETURNING *`,
             [JSON.stringify(parsed.profile), JSON.stringify(parsed.learningPlan), studentId]
           );
+          await log('summary', `Learning plan generated for ${student.name}`);
         }
       } catch (aiErr) {
-        console.error('AI profile generation failed:', aiErr);
-        // Don't fail the request if AI generation fails
+        const errMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
+        console.error('AI profile generation failed:', errMsg);
+        await log('error', `AI profile generation failed for ${student.name}: ${errMsg}`);
       }
     } else if (meetingCount > 1 && transcript) {
       // Subsequent meetings: generate session notes and next plan
@@ -139,7 +146,8 @@ Return as JSON only, no markdown: { "sessionNotes": "...", "homework": "...", "n
 
         const textBlock = response.content.find((b) => b.type === 'text');
         if (textBlock && textBlock.type === 'text') {
-          const parsed = JSON.parse(textBlock.text);
+          const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+          const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : textBlock.text);
 
           await queryOne(
             `UPDATE student_meetings
@@ -148,9 +156,12 @@ Return as JSON only, no markdown: { "sessionNotes": "...", "homework": "...", "n
              RETURNING *`,
             [parsed.sessionNotes, parsed.homework, parsed.nextSessionPlan, studentId, meetingId]
           );
+          await log('summary', `Session plan generated for ${student.name}`);
         }
       } catch (aiErr) {
-        console.error('AI session plan generation failed:', aiErr);
+        const errMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
+        console.error('AI session plan generation failed:', errMsg);
+        await log('error', `AI session plan failed for ${student.name}: ${errMsg}`);
       }
     }
 
