@@ -396,54 +396,40 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* Section: Project Folders */}
+        {/* Section: Workspace Prefix */}
         <section className="bg-[var(--surface-1)] border border-[var(--border)] rounded-2xl p-6">
           <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-1">
-            Project Folders
+            Workspace Prefix
           </h2>
-          <p className="text-sm text-[var(--text-muted)] mb-5">
-            Configure folders for Claude Code integration
+          <p className="text-sm text-[var(--text-muted)] mb-4">
+            Base folder path on your computer. Repo names from GitHub are appended automatically.
           </p>
-          <div className="space-y-2">
-            {projectFolders.length === 0 && (
-              <p className="text-xs text-[var(--text-muted)] italic">
-                No folders configured. Suggestion: ~/Desktop/workspace
-              </p>
-            )}
-            {projectFolders.map((folder) => (
-              <div
-                key={folder}
-                className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]"
-              >
-                <code className="text-sm text-[var(--text-secondary)] truncate">{folder}</code>
-                <button
-                  onClick={() => handleRemoveFolder(folder)}
-                  disabled={savingFolders}
-                  className="text-[var(--danger)] hover:text-red-400 text-sm font-bold shrink-0 disabled:opacity-50"
-                  title="Remove folder"
-                >
-                  X
-                </button>
-              </div>
-            ))}
-            <div className="flex gap-2 mt-3">
-              <input
-                type="text"
-                value={newFolder}
-                onChange={(e) => setNewFolder(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleAddFolder(); }}
-                placeholder="~/Desktop/workspace"
-                className="flex-1 px-3 py-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] text-sm focus:outline-none focus:border-[var(--accent)]"
-              />
-              <button
-                onClick={handleAddFolder}
-                disabled={savingFolders || !newFolder.trim()}
-                className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                + Add
-              </button>
-            </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newFolder || '~/Desktop/workspace/'}
+              onChange={(e) => setNewFolder(e.target.value)}
+              placeholder="~/Desktop/workspace/"
+              className="flex-1 px-3 py-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] text-sm font-mono focus:outline-none focus:border-[var(--accent)]"
+            />
+            <button
+              onClick={async () => {
+                const val = (newFolder || '~/Desktop/workspace/').trim();
+                await fetch('/api/settings', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ key: 'workspace_prefix', value: val }),
+                });
+                setNewFolder(val);
+              }}
+              className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium hover:bg-[var(--accent-hover)] transition-colors"
+            >
+              Save
+            </button>
           </div>
+          <p className="text-xs text-[var(--text-muted)] mt-2">
+            Example: selecting repo &quot;cunhas-brain&quot; → <code className="text-[var(--accent)]">{(newFolder || '~/Desktop/workspace/').replace(/\/$/, '')}/cunhas-brain</code>
+          </p>
         </section>
 
         {/* Section 2: Integrations */}

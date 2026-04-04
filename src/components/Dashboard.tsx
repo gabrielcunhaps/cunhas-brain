@@ -26,6 +26,7 @@ export default function Dashboard() {
   const [claudeModal, setClaudeModal] = useState<string | null>(null);
   const [projectFolders, setProjectFolders] = useState<string[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string>('');
+  const [workspacePrefix, setWorkspacePrefix] = useState<string>('~/Desktop/workspace/');
   const [claudeNotes, setClaudeNotes] = useState<string>('');
 
   const fetchTodos = useCallback(async () => {
@@ -44,16 +45,23 @@ export default function Dashboard() {
   useEffect(() => {
     fetchTodos();
     const interval = setInterval(fetchTodos, 30000);
-    // Fetch project folders from settings
+    // Fetch workspace prefix from settings
     fetch('/api/settings')
       .then((res) => res.json())
       .then((data) => {
-        if (data.project_folders) {
-          try {
-            const folders = JSON.parse(data.project_folders);
-            setProjectFolders(folders);
-            if (folders.length > 0) setSelectedFolder(folders[0]);
-          } catch { /* ignore parse errors */ }
+        if (data.workspace_prefix) {
+          setWorkspacePrefix(data.workspace_prefix);
+        }
+      })
+      .catch(() => {});
+    // Fetch repos from GitHub to build folder list
+    fetch('/api/github?type=repos')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.repos) {
+          const repoNames = data.repos.map((r: { name: string }) => r.name);
+          setProjectFolders(repoNames);
+          if (repoNames.length > 0) setSelectedFolder(repoNames[0]);
         }
       })
       .catch(() => {});
@@ -120,14 +128,20 @@ export default function Dashboard() {
     return true;
   });
 
+  const getFullPath = (repoName: string) => {
+    const prefix = workspacePrefix.endsWith('/') ? workspacePrefix : workspacePrefix + '/';
+    return `${prefix}${repoName}`;
+  };
+
   const generateClaudeCommand = (todo: TodoItem, folder: string, notes: string) => {
     let prompt = todo.text.replace(/"/g, '\\"');
     if (notes.trim()) {
       prompt += `\\n\\nAdditional context: ${notes.replace(/"/g, '\\"').replace(/\n/g, '\\n')}`;
     }
+    const fullPath = getFullPath(folder);
     let cmd = `claude -p "${prompt}"`;
     if (folder) {
-      cmd += ` --cwd ${folder}`;
+      cmd += ` --cwd ${fullPath}`;
     }
     return cmd;
   };
@@ -140,7 +154,8 @@ export default function Dashboard() {
 
   const openInVSCode = (todo: TodoItem) => {
     if (selectedFolder) {
-      window.open(`vscode://file/${selectedFolder}`, '_blank');
+      const fullPath = getFullPath(selectedFolder);
+      window.open(`vscode://file${fullPath}`, '_blank');
     }
     navigator.clipboard.writeText(generateClaudeCommand(todo, selectedFolder, claudeNotes));
     setCopied(todo.id);
