@@ -22,8 +22,8 @@ export interface MeetingDetail extends Meeting {
 export interface MeetingSummary {
   meetingId: number;
   summary: string;
-  takeaways: string[];
-  actionItems: string[];
+  takeaways: unknown[];
+  actionItems: unknown[];
   generatedAt: string;
 }
 

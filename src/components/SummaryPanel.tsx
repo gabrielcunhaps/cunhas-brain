@@ -124,7 +124,7 @@ export default function SummaryPanel({ meetingId }: SummaryPanelProps) {
             {summary.takeaways.map((t, i) => (
               <li key={i} className="text-[var(--text-secondary)] text-sm flex gap-2">
                 <span className="text-[var(--accent)] flex-shrink-0">-</span>
-                <span>{t}</span>
+                <span>{typeof t === 'string' ? t : JSON.stringify(t)}</span>
               </li>
             ))}
           </ul>
@@ -145,7 +145,7 @@ export default function SummaryPanel({ meetingId }: SummaryPanelProps) {
                   <span className="text-[var(--success)] flex-shrink-0">-</span>
                   <span>
                     {String(text)}
-                    {assignee && <span className="text-[var(--text-muted)]"> ({String(assignee)})</span>}
+                    {assignee ? <span className="text-[var(--text-muted)]"> ({String(assignee)})</span> : null}
                   </span>
                 </li>
               );
