@@ -2,6 +2,11 @@
 
 ### 2026-03-29
 - **Project**: cunhas-brain
+- **Change**: Enhanced Student Management feature. (1) Upgraded meeting attachment API to generate rich session insights (sessionSummary, todos, recommendations, topicsDiscussed, progressNotes, nextSessionPlan) stored as JSON in session_notes column -- first meeting also generates profile + learning plan, subsequent meetings generate per-session insights without changing the plan. (2) Redesigned StudentDetail with collapsible Profile/Learning Plan sections, session timeline with numbered expandable cards, "First Session" badge, topics as tag badges, todos as checklists, AI processing indicator, and clickable meeting links. (3) Improved StudentList cards to show session count, total hours, last session date, progress bar based on learning plan topics, and platform badge. (4) Enhanced students list API to return last_session_date and total_duration.
+- **Outcome**: Richer AI-powered session analysis with structured insights per meeting, and a complete visual redesign of student detail and list views.
+
+### 2026-03-29
+- **Project**: cunhas-brain
 - **Change**: Built Inoreader Newsletters feature. Created API route (`src/app/api/newsletters/route.ts`) with GET (fetch from Inoreader API with date range, cache in DB) and POST (generate AI summary with Claude Haiku). Created `NewslettersView` component with quick date range buttons, custom date pickers, daily feed view grouped by date, and AI summary view. Created newsletters page at `/newsletters`. Added Newsletters link to Nav between Chat and GitHub. Added Inoreader token input and integration card to Settings page. Updated settings API to mask tokens.
 - **Outcome**: Full newsletter aggregation system at /newsletters with Inoreader RSS feed integration, local caching, and AI-powered summaries.
 

@@ -42,8 +42,9 @@ async function fetchFromInoreader(token: string, from: string, to: string): Prom
   const startTs = Math.floor(new Date(from + 'T00:00:00Z').getTime() / 1000);
   const endTs = Math.floor(new Date(to + 'T23:59:59Z').getTime() / 1000);
 
-  // Fetch ONLY from the Newsletter section (not feeds/folders)
-  const nlUrl = `https://www.inoreader.com/reader/api/0/stream/contents/user/-/state/com.google/created-by-newsletter?n=100&ot=${startTs}&nt=${endTs}`;
+  // Fetch from the Newsletter email subscription (feed/dailynewsletter3@ino.to)
+  const nlStream = encodeURIComponent('feed/dailynewsletter3@ino.to');
+  const nlUrl = `https://www.inoreader.com/reader/api/0/stream/contents/${nlStream}?n=100&ot=${startTs}&nt=${endTs}`;
   const res = await fetch(nlUrl, {
     headers: { Authorization: `Bearer ${token}` },
   });
