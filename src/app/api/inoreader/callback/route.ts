@@ -11,9 +11,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
   const error = searchParams.get('error');
-  const origin = request.headers.get('x-forwarded-host')
-    ? `https://${request.headers.get('x-forwarded-host')}`
-    : new URL(request.url).origin;
+  const origin = 'https://cunhas-brain.vercel.app';
 
   if (error) {
     await log('error', `Inoreader OAuth error: ${error}`);
