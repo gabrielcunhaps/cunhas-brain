@@ -2,6 +2,11 @@
 
 ### 2026-03-29
 - **Project**: cunhas-brain
+- **Change**: Built Knowledge Base / Notes feature. Created 4 API routes: `src/app/api/notes/route.ts` (GET list, POST with AI analysis via Claude -- generates summary, key topics, auto-inserts wikilinks, builds knowledge_edges), `src/app/api/notes/[id]/route.ts` (GET with connected notes, PUT with AI re-processing and edge rebuild, DELETE with edge cleanup), `src/app/api/notes/graph/route.ts` (full knowledge graph nodes + edges), `src/app/api/notes/chat/route.ts` (streaming chat with all notes as context). Created `KnowledgeBase.tsx` component with 3 tabs: Notes List (two-panel with search, note cards, markdown rendering with clickable wikilink badges, upload modal with .md file support), Knowledge Graph (force-directed canvas graph with zoom/pan/hover/click, no external dependencies), Chat (streaming AI chat against the knowledge base). Added `/knowledge` page and Knowledge nav link.
+- **Outcome**: Fully functional Obsidian-style knowledge base with AI-powered note analysis, automatic wikilink detection and cross-linking, visual knowledge graph, and conversational AI interface over the note corpus.
+
+### 2026-03-29
+- **Project**: cunhas-brain
 - **Change**: Built Artifacts feature. Created API routes (`src/app/api/artifacts/route.ts` for GET list/POST upload, `src/app/api/artifacts/[id]/route.ts` for GET/PUT/DELETE single artifact). POST and PUT auto-generate AI explanations via Claude (whatItIs, keyInsights, relatedConcepts, technologiesUsed). Created `ArtifactsView` component with two-panel layout: left panel has upload button, search bar, and artifact cards list; right panel has sandboxed iframe live preview (60%) and AI explanation display (40%). Upload modal supports both file upload and code paste with auto file-type detection. React/JSX files are wrapped in HTML template with React CDN for rendering. Added fullscreen preview mode. Created artifacts page at `/artifacts`. Added Artifacts link to Nav between GitHub and Students. Responsive layout stacks vertically on mobile.
 - **Outcome**: Fully functional artifact upload, preview, and AI analysis system with live rendering and structured explanations.
 

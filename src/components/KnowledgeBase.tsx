@@ -1,0 +1,870 @@
+'use client';
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface Note {
+  id: number;
+  title: string;
+  summary: string | null;
+  content?: string;
+  wikilinks: string[] | null;
+  tags: string[] | null;
+  ai_metadata?: Record<string, unknown> | null;
+  connectedNotes?: { id: number; title: string; keyword: string }[];
+  created_at: string;
+}
+
+interface GraphData {
+  nodes: { id: number; title: string; wikilinks: string[] }[];
+  edges: { source: number; target: number; keyword: string }[];
+}
+
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+type Tab = 'notes' | 'graph' | 'chat';
+
+// ─── Main Component ──────────────────────────────────────────────────────────
+
+export default function KnowledgeBase() {
+  const [tab, setTab] = useState<Tab>('notes');
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [selectedNote, setSelectedNote] = useState<Note | null>(null);
+  const [search, setSearch] = useState('');
+  const [showUpload, setShowUpload] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetchNotes();
+  }, []);
+
+  async function fetchNotes() {
+    try {
+      const res = await fetch('/api/notes');
+      const data = await res.json();
+      if (Array.isArray(data)) setNotes(data);
+    } catch (err) {
+      console.error('Failed to fetch notes:', err);
+    }
+  }
+
+  async function selectNote(id: number) {
+    try {
+      const res = await fetch(`/api/notes/${id}`);
+      const data = await res.json();
+      setSelectedNote(data);
+    } catch (err) {
+      console.error('Failed to load note:', err);
+    }
+  }
+
+  async function deleteNote(id: number) {
+    if (!confirm('Delete this note?')) return;
+    try {
+      await fetch(`/api/notes/${id}`, { method: 'DELETE' });
+      setSelectedNote(null);
+      fetchNotes();
+    } catch (err) {
+      console.error('Failed to delete note:', err);
+    }
+  }
+
+  function handleGraphNodeClick(nodeId: number) {
+    setTab('notes');
+    selectNote(nodeId);
+  }
+
+  function handleWikilinkClick(keyword: string) {
+    const match = notes.find(
+      (n) => n.wikilinks?.some((w) => w.toLowerCase() === keyword.toLowerCase())
+    );
+    if (match) selectNote(match.id);
+  }
+
+  const filtered = notes.filter(
+    (n) =>
+      n.title.toLowerCase().includes(search.toLowerCase()) ||
+      n.summary?.toLowerCase().includes(search.toLowerCase()) ||
+      n.tags?.some((t) => t.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg)' }}>
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: 4, padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface-1)' }}>
+        {(['notes', 'graph', 'chat'] as Tab[]).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            style={{
+              padding: '6px 16px',
+              borderRadius: 6,
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: 14,
+              fontWeight: 500,
+              background: tab === t ? 'var(--surface-3)' : 'transparent',
+              color: tab === t ? 'var(--accent)' : 'var(--text-secondary)',
+            }}
+          >
+            {t === 'notes' ? 'Notes List' : t === 'graph' ? 'Knowledge Graph' : 'Chat'}
+          </button>
+        ))}
+        <div style={{ flex: 1 }} />
+        <span style={{ color: 'var(--text-muted)', fontSize: 13, alignSelf: 'center' }}>
+          {notes.length} note{notes.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+
+      {/* Tab content */}
+      <div style={{ flex: 1, overflow: 'hidden' }}>
+        {tab === 'notes' && (
+          <NotesTab
+            notes={filtered}
+            selectedNote={selectedNote}
+            search={search}
+            onSearchChange={setSearch}
+            onSelectNote={selectNote}
+            onDeleteNote={deleteNote}
+            onUploadClick={() => setShowUpload(true)}
+            onWikilinkClick={handleWikilinkClick}
+          />
+        )}
+        {tab === 'graph' && <GraphTab onNodeClick={handleGraphNodeClick} />}
+        {tab === 'chat' && <ChatTab />}
+      </div>
+
+      {/* Upload modal */}
+      {showUpload && (
+        <UploadModal
+          loading={loading}
+          onClose={() => setShowUpload(false)}
+          onUpload={async (title, content, tags) => {
+            setLoading(true);
+            try {
+              const res = await fetch('/api/notes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, content, tags }),
+              });
+              if (res.ok) {
+                setShowUpload(false);
+                fetchNotes();
+              }
+            } catch (err) {
+              console.error('Upload failed:', err);
+            } finally {
+              setLoading(false);
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Notes Tab ───────────────────────────────────────────────────────────────
+
+function NotesTab({
+  notes, selectedNote, search, onSearchChange, onSelectNote, onDeleteNote, onUploadClick, onWikilinkClick,
+}: {
+  notes: Note[];
+  selectedNote: Note | null;
+  search: string;
+  onSearchChange: (v: string) => void;
+  onSelectNote: (id: number) => void;
+  onDeleteNote: (id: number) => void;
+  onUploadClick: () => void;
+  onWikilinkClick: (keyword: string) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', height: '100%' }}>
+      {/* Left panel */}
+      <div style={{ width: 350, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', background: 'var(--surface-1)' }}>
+        <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button onClick={onUploadClick} style={btnStyle}>
+            + Upload Note
+          </button>
+          <input
+            type="text"
+            placeholder="Search notes..."
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 12px' }}>
+          {notes.map((n) => (
+            <div
+              key={n.id}
+              onClick={() => onSelectNote(n.id)}
+              style={{
+                padding: 12,
+                borderRadius: 8,
+                marginBottom: 6,
+                cursor: 'pointer',
+                background: selectedNote?.id === n.id ? 'var(--surface-3)' : 'var(--surface-2)',
+                border: selectedNote?.id === n.id ? '1px solid var(--accent)' : '1px solid transparent',
+              }}
+            >
+              <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', marginBottom: 4 }}>
+                {n.title}
+              </div>
+              {n.summary && (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>
+                  {n.summary}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                {n.tags?.map((t) => (
+                  <span key={t} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: 'var(--surface-3)', color: 'var(--text-secondary)' }}>
+                    {t}
+                  </span>
+                ))}
+                {(n.wikilinks?.length ?? 0) > 0 && (
+                  <span style={{ fontSize: 10, color: 'var(--accent)', marginLeft: 'auto' }}>
+                    {n.wikilinks!.length} links
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+                {new Date(n.created_at).toLocaleDateString()}
+              </div>
+            </div>
+          ))}
+          {notes.length === 0 && (
+            <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 24, fontSize: 13 }}>
+              No notes yet. Upload one to get started.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Right panel */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+        {selectedNote ? (
+          <NoteDetail note={selectedNote} onDelete={onDeleteNote} onWikilinkClick={onWikilinkClick} />
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
+            Select a note to view its content
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Note Detail ─────────────────────────────────────────────────────────────
+
+function NoteDetail({ note, onDelete, onWikilinkClick }: { note: Note; onDelete: (id: number) => void; onWikilinkClick: (keyword: string) => void }) {
+  // Custom renderer: intercept wikilinks in the markdown
+  function renderContent(content: string) {
+    // Split content by wikilinks
+    const parts = content.split(/(\[\[[^\]]+\]\])/g);
+    return parts.map((part, i) => {
+      const match = part.match(/^\[\[([^\]]+)\]\]$/);
+      if (match) {
+        return (
+          <span
+            key={i}
+            onClick={() => onWikilinkClick(match[1])}
+            style={{
+              display: 'inline-block',
+              padding: '1px 8px',
+              borderRadius: 4,
+              background: 'var(--surface-3)',
+              color: 'var(--accent)',
+              cursor: 'pointer',
+              fontSize: '0.9em',
+              fontWeight: 500,
+              margin: '0 2px',
+              border: '1px solid var(--border)',
+            }}
+          >
+            {match[1]}
+          </span>
+        );
+      }
+      return <ReactMarkdown key={i}>{part}</ReactMarkdown>;
+    });
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+        <h2 style={{ margin: 0, color: 'var(--text-primary)', fontSize: 22 }}>{note.title}</h2>
+        <button onClick={() => onDelete(note.id)} style={{ ...btnDangerStyle, fontSize: 12, padding: '4px 12px' }}>
+          Delete
+        </button>
+      </div>
+
+      {/* Metadata bar */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        {note.tags?.map((t) => (
+          <span key={t} style={tagStyle}>{t}</span>
+        ))}
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+          Created {new Date(note.created_at).toLocaleDateString()}
+        </span>
+        {(note.connectedNotes?.length ?? 0) > 0 && (
+          <span style={{ fontSize: 12, color: 'var(--accent)' }}>
+            {note.connectedNotes!.length} connected note{note.connectedNotes!.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+
+      {/* Connected notes */}
+      {note.connectedNotes && note.connectedNotes.length > 0 && (
+        <div style={{ marginBottom: 16, padding: 12, background: 'var(--surface-2)', borderRadius: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Connected Notes</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {note.connectedNotes.map((cn) => (
+              <span
+                key={`${cn.id}-${cn.keyword}`}
+                onClick={() => onWikilinkClick(cn.keyword)}
+                style={{
+                  fontSize: 12,
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  background: 'var(--surface-3)',
+                  color: 'var(--accent)',
+                  cursor: 'pointer',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                {cn.title} ({cn.keyword})
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Content */}
+      <div className="prose prose-invert" style={{ color: 'var(--text-primary)', lineHeight: 1.7, fontSize: 15 }}>
+        {note.content ? renderContent(note.content) : <p style={{ color: 'var(--text-muted)' }}>No content</p>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Upload Modal ────────────────────────────────────────────────────────────
+
+function UploadModal({ loading, onClose, onUpload }: {
+  loading: boolean;
+  onClose: () => void;
+  onUpload: (title: string, content: string, tags: string[]) => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [tagsStr, setTagsStr] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      setContent(text);
+      if (!title) setTitle(file.name.replace(/\.md$/, ''));
+    };
+    reader.readAsText(file);
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+      <div style={{ background: 'var(--surface-1)', borderRadius: 12, padding: 24, width: 560, maxHeight: '80vh', overflow: 'auto', border: '1px solid var(--border)' }}>
+        <h3 style={{ margin: '0 0 16px', color: 'var(--text-primary)' }}>Upload Note</h3>
+
+        <label style={labelStyle}>Title</label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Note title"
+          style={{ ...inputStyle, marginBottom: 12 }}
+        />
+
+        <label style={labelStyle}>Content (Markdown)</label>
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder="Paste markdown content here..."
+          rows={12}
+          style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace', marginBottom: 8 }}
+        />
+        <div style={{ marginBottom: 12 }}>
+          <input ref={fileInputRef} type="file" accept=".md,.txt,.markdown" onChange={handleFileUpload} style={{ display: 'none' }} />
+          <button onClick={() => fileInputRef.current?.click()} style={{ ...btnSmallStyle, fontSize: 12 }}>
+            Or upload .md file
+          </button>
+        </div>
+
+        <label style={labelStyle}>Tags (comma-separated)</label>
+        <input
+          type="text"
+          value={tagsStr}
+          onChange={(e) => setTagsStr(e.target.value)}
+          placeholder="e.g. AI, productivity, notes"
+          style={{ ...inputStyle, marginBottom: 16 }}
+        />
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={btnSmallStyle} disabled={loading}>Cancel</button>
+          <button
+            onClick={() => {
+              const tags = tagsStr.split(',').map((t) => t.trim()).filter(Boolean);
+              onUpload(title, content, tags);
+            }}
+            disabled={!title || !content || loading}
+            style={btnStyle}
+          >
+            {loading ? 'Analyzing and building connections...' : 'Upload & Process'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Graph Tab ───────────────────────────────────────────────────────────────
+
+interface GraphNode {
+  id: number;
+  title: string;
+  wikilinks: string[];
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  connections: number;
+}
+
+function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const nodesRef = useRef<GraphNode[]>([]);
+  const edgesRef = useRef<{ source: number; target: number; keyword: string }[]>([]);
+  const [hovered, setHovered] = useState<GraphNode | null>(null);
+  const offsetRef = useRef({ x: 0, y: 0 });
+  const zoomRef = useRef(1);
+  const dragRef = useRef<{ dragging: boolean; lastX: number; lastY: number }>({ dragging: false, lastX: 0, lastY: 0 });
+  const animRef = useRef<number>(0);
+
+  const getNodeAt = useCallback((mx: number, my: number): GraphNode | null => {
+    const off = offsetRef.current;
+    const z = zoomRef.current;
+    for (const node of nodesRef.current) {
+      const sx = node.x * z + off.x;
+      const sy = node.y * z + off.y;
+      const r = Math.max(8, 4 + node.connections * 3) * z;
+      if (Math.hypot(mx - sx, my - sy) < r) return node;
+    }
+    return null;
+  }, []);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch('/api/notes/graph');
+        const data: GraphData = await res.json();
+        if (!data.nodes) return;
+
+        // Count connections per node
+        const connCount: Record<number, number> = {};
+        for (const e of data.edges) {
+          connCount[e.source] = (connCount[e.source] || 0) + 1;
+          connCount[e.target] = (connCount[e.target] || 0) + 1;
+        }
+
+        const canvas = canvasRef.current;
+        const w = canvas?.parentElement?.clientWidth || 800;
+        const h = canvas?.parentElement?.clientHeight || 600;
+
+        nodesRef.current = data.nodes.map((n) => ({
+          ...n,
+          x: w / 2 + (Math.random() - 0.5) * 300,
+          y: h / 2 + (Math.random() - 0.5) * 300,
+          vx: 0,
+          vy: 0,
+          connections: connCount[n.id] || 0,
+        }));
+        edgesRef.current = data.edges;
+
+        // Center offset
+        offsetRef.current = { x: 0, y: 0 };
+      } catch (err) {
+        console.error('Failed to load graph:', err);
+      }
+    }
+    load();
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    function resize() {
+      if (!canvas) return;
+      const parent = canvas.parentElement;
+      if (!parent) return;
+      canvas.width = parent.clientWidth;
+      canvas.height = parent.clientHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    function simulate() {
+      const nodes = nodesRef.current;
+      const edges = edgesRef.current;
+      const nodeMap: Record<number, GraphNode> = {};
+      for (const n of nodes) nodeMap[n.id] = n;
+
+      // Repulsion
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const dx = nodes[j].x - nodes[i].x;
+          const dy = nodes[j].y - nodes[i].y;
+          const dist = Math.max(1, Math.hypot(dx, dy));
+          const force = 800 / (dist * dist);
+          const fx = (dx / dist) * force;
+          const fy = (dy / dist) * force;
+          nodes[i].vx -= fx;
+          nodes[i].vy -= fy;
+          nodes[j].vx += fx;
+          nodes[j].vy += fy;
+        }
+      }
+
+      // Attraction along edges
+      for (const e of edges) {
+        const s = nodeMap[e.source];
+        const t = nodeMap[e.target];
+        if (!s || !t) continue;
+        const dx = t.x - s.x;
+        const dy = t.y - s.y;
+        const dist = Math.max(1, Math.hypot(dx, dy));
+        const force = (dist - 120) * 0.01;
+        const fx = (dx / dist) * force;
+        const fy = (dy / dist) * force;
+        s.vx += fx;
+        s.vy += fy;
+        t.vx -= fx;
+        t.vy -= fy;
+      }
+
+      // Center gravity
+      if (!canvas) return;
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      for (const n of nodes) {
+        n.vx += (cx - n.x) * 0.001;
+        n.vy += (cy - n.y) * 0.001;
+        n.vx *= 0.9;
+        n.vy *= 0.9;
+        n.x += n.vx;
+        n.y += n.vy;
+      }
+
+      // Draw
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const off = offsetRef.current;
+      const z = zoomRef.current;
+
+      ctx.save();
+      ctx.translate(off.x, off.y);
+      ctx.scale(z, z);
+
+      // Edges
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.lineWidth = 1;
+      for (const e of edges) {
+        const s = nodeMap[e.source];
+        const t = nodeMap[e.target];
+        if (!s || !t) continue;
+        const isHL = hovered && (hovered.id === s.id || hovered.id === t.id);
+        ctx.strokeStyle = isHL ? 'var(--accent, #6366f1)' : 'rgba(255,255,255,0.15)';
+        ctx.lineWidth = isHL ? 2 : 1;
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y);
+        ctx.lineTo(t.x, t.y);
+        ctx.stroke();
+      }
+
+      // Nodes
+      for (const n of nodes) {
+        const r = Math.max(8, 4 + n.connections * 3);
+        const isHL = hovered?.id === n.id;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = isHL ? 'var(--accent-hover, #818cf8)' : 'var(--accent, #6366f1)';
+        ctx.fill();
+
+        // Label
+        ctx.font = `${isHL ? 13 : 11}px sans-serif`;
+        ctx.fillStyle = isHL ? 'var(--text-primary, #fff)' : 'var(--text-secondary, #aaa)';
+        ctx.textAlign = 'center';
+        ctx.fillText(n.title.length > 20 ? n.title.slice(0, 18) + '...' : n.title, n.x, n.y - r - 6);
+      }
+
+      ctx.restore();
+      animRef.current = requestAnimationFrame(simulate);
+    }
+
+    animRef.current = requestAnimationFrame(simulate);
+
+    return () => {
+      window.removeEventListener('resize', resize);
+      cancelAnimationFrame(animRef.current);
+    };
+  }, [hovered]);
+
+  function handleMouseMove(e: React.MouseEvent) {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    if (dragRef.current.dragging) {
+      offsetRef.current.x += mx - dragRef.current.lastX;
+      offsetRef.current.y += my - dragRef.current.lastY;
+      dragRef.current.lastX = mx;
+      dragRef.current.lastY = my;
+      return;
+    }
+
+    const node = getNodeAt(mx, my);
+    setHovered(node);
+    if (canvasRef.current) canvasRef.current.style.cursor = node ? 'pointer' : 'grab';
+  }
+
+  function handleMouseDown(e: React.MouseEvent) {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    dragRef.current = { dragging: true, lastX: mx, lastY: my };
+  }
+
+  function handleMouseUp(e: React.MouseEvent) {
+    if (!dragRef.current.dragging) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const moved = Math.hypot(mx - dragRef.current.lastX, my - dragRef.current.lastY);
+    dragRef.current.dragging = false;
+    // If barely moved, treat as click
+    if (moved < 5) {
+      const node = getNodeAt(mx, my);
+      if (node) onNodeClick(node.id);
+    }
+  }
+
+  function handleWheel(e: React.WheelEvent) {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    zoomRef.current = Math.max(0.2, Math.min(3, zoomRef.current * delta));
+  }
+
+  return (
+    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <canvas
+        ref={canvasRef}
+        onMouseMove={handleMouseMove}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={() => { dragRef.current.dragging = false; setHovered(null); }}
+        onWheel={handleWheel}
+        style={{ width: '100%', height: '100%', cursor: 'grab' }}
+      />
+      {hovered && (
+        <div style={{
+          position: 'absolute', top: 12, left: 12, background: 'var(--surface-2)', padding: '8px 14px',
+          borderRadius: 8, border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 13,
+        }}>
+          <strong>{hovered.title}</strong>
+          <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>{hovered.connections} connections</span>
+        </div>
+      )}
+      {nodesRef.current.length === 0 && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+          No notes yet. Upload notes to see the knowledge graph.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Chat Tab ────────────────────────────────────────────────────────────────
+
+function ChatTab() {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState('');
+  const [streaming, setStreaming] = useState(false);
+  const sessionRef = useRef(`kb-${Date.now()}`);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  async function sendMessage() {
+    if (!input.trim() || streaming) return;
+    const userMsg = input.trim();
+    setInput('');
+    setMessages((prev) => [...prev, { role: 'user', content: userMsg }]);
+    setStreaming(true);
+
+    try {
+      const res = await fetch('/api/notes/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMsg, sessionId: sessionRef.current }),
+      });
+
+      if (!res.ok || !res.body) {
+        setMessages((prev) => [...prev, { role: 'assistant', content: 'Error: Failed to get response.' }]);
+        setStreaming(false);
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let assistantContent = '';
+
+      setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        assistantContent += decoder.decode(value, { stream: true });
+        setMessages((prev) => {
+          const copy = [...prev];
+          copy[copy.length - 1] = { role: 'assistant', content: assistantContent };
+          return copy;
+        });
+      }
+    } catch (err) {
+      console.error('Chat error:', err);
+      setMessages((prev) => [...prev, { role: 'assistant', content: 'Error: Failed to send message.' }]);
+    } finally {
+      setStreaming(false);
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Messages */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+        {messages.length === 0 && (
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', paddingTop: 60, fontSize: 14 }}>
+            Ask anything about your knowledge base. Your notes are loaded as context.
+          </div>
+        )}
+        {messages.map((m, i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
+            <div style={{
+              maxWidth: '70%',
+              padding: '10px 14px',
+              borderRadius: 12,
+              background: m.role === 'user' ? 'var(--accent)' : 'var(--surface-2)',
+              color: m.role === 'user' ? '#fff' : 'var(--text-primary)',
+              fontSize: 14,
+              lineHeight: 1.6,
+              whiteSpace: 'pre-wrap',
+            }}>
+              {m.role === 'assistant' ? <ReactMarkdown>{m.content}</ReactMarkdown> : m.content}
+            </div>
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div style={{ padding: 16, borderTop: '1px solid var(--border)', background: 'var(--surface-1)', display: 'flex', gap: 8 }}>
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+          placeholder="Ask about your notes..."
+          style={{ ...inputStyle, flex: 1 }}
+          disabled={streaming}
+        />
+        <button onClick={sendMessage} disabled={streaming || !input.trim()} style={btnStyle}>
+          {streaming ? '...' : 'Send'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Shared Styles ───────────────────────────────────────────────────────────
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '8px 12px',
+  borderRadius: 6,
+  border: '1px solid var(--border)',
+  background: 'var(--surface-2)',
+  color: 'var(--text-primary)',
+  fontSize: 14,
+  outline: 'none',
+  boxSizing: 'border-box',
+};
+
+const btnStyle: React.CSSProperties = {
+  padding: '8px 16px',
+  borderRadius: 6,
+  border: 'none',
+  background: 'var(--accent)',
+  color: '#fff',
+  cursor: 'pointer',
+  fontSize: 14,
+  fontWeight: 500,
+  whiteSpace: 'nowrap',
+};
+
+const btnSmallStyle: React.CSSProperties = {
+  padding: '6px 12px',
+  borderRadius: 6,
+  border: '1px solid var(--border)',
+  background: 'var(--surface-2)',
+  color: 'var(--text-secondary)',
+  cursor: 'pointer',
+  fontSize: 13,
+};
+
+const btnDangerStyle: React.CSSProperties = {
+  padding: '6px 12px',
+  borderRadius: 6,
+  border: '1px solid var(--danger)',
+  background: 'transparent',
+  color: 'var(--danger)',
+  cursor: 'pointer',
+  fontSize: 13,
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: 12,
+  fontWeight: 600,
+  color: 'var(--text-secondary)',
+  marginBottom: 4,
+};
+
+const tagStyle: React.CSSProperties = {
+  fontSize: 11,
+  padding: '2px 8px',
+  borderRadius: 4,
+  background: 'var(--surface-3)',
+  color: 'var(--text-secondary)',
+};

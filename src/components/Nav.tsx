@@ -11,6 +11,7 @@ const links = [
   { href: '/newsletters', label: 'Newsletters' },
   { href: '/github', label: 'GitHub' },
   { href: '/artifacts', label: 'Artifacts' },
+  { href: '/knowledge', label: 'Knowledge' },
   { href: '/students', label: 'Students' },
   { href: '/logs', label: 'Logs' },
   { href: '/settings', label: 'Settings' },
