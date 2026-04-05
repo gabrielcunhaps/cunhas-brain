@@ -800,18 +800,30 @@ export default function StudentDetail({ studentId }: { studentId: string }) {
               Session History ({sortedMeetings.length})
             </h2>
           </div>
-          <button
-            onClick={() => {
-              setShowAttach(!showAttach);
-              if (!showAttach) fetchAvailableMeetings();
-            }}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors flex items-center gap-1.5"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            Attach Meeting
-          </button>
+          <div className="flex items-center gap-2">
+            {selectedMeetingIds.size > 0 && (
+              <button
+                onClick={handleAttach}
+                disabled={attaching}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--success)] text-white hover:opacity-90 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+              >
+                {attaching ? 'Analyzing...' : `Attach & Analyze (${selectedMeetingIds.size})`}
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setShowAttach(!showAttach);
+                if (!showAttach) fetchAvailableMeetings();
+                if (showAttach) setSelectedMeetingIds(new Set());
+              }}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors flex items-center gap-1.5"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              {showAttach ? 'Cancel' : 'Attach Meeting'}
+            </button>
+          </div>
         </div>
 
         {/* AI Processing Indicator */}
@@ -872,18 +884,11 @@ export default function StudentDetail({ studentId }: { studentId: string }) {
                 ))}
                 </div>
                 {selectedMeetingIds.size > 0 && (
-                  <div className="p-3 border-t border-[var(--border)] flex items-center justify-between">
+                  <div className="p-3 border-t border-[var(--border)]">
                     <span className="text-xs text-[var(--text-muted)]">
                       {selectedMeetingIds.size} meeting{selectedMeetingIds.size > 1 ? 's' : ''} selected
-                      {selectedMeetingIds.size > 1 && ' — consolidated into one session'}
+                      {selectedMeetingIds.size > 1 && ' — will be consolidated into one session'}
                     </span>
-                    <button
-                      onClick={handleAttach}
-                      disabled={attaching}
-                      className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-semibold hover:bg-[var(--accent-hover)] disabled:opacity-50 transition-colors"
-                    >
-                      {attaching ? 'Analyzing...' : 'Attach & Analyze'}
-                    </button>
                   </div>
                 )}
               </div>
