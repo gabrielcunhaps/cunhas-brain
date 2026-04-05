@@ -85,7 +85,8 @@ Return as JSON only, no markdown:
   "nextSessionPlan": "Concrete plan for next session — what to review, what new ground to cover"
 }`;
 
-function extractJSON(text: string): Record<string, unknown> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractJSON(text: string): any {
   // Try direct parse first
   try { return JSON.parse(text); } catch { /* continue */ }
 
