@@ -67,7 +67,7 @@ export async function GET() {
           text = item;
         } else if (typeof item === 'object' && item !== null) {
           const obj = item as Record<string, unknown>;
-          text = String(obj.task || obj.text || obj.description || JSON.stringify(obj));
+          text = String(obj.task || obj.item || obj.text || obj.description || obj.action || JSON.stringify(obj));
           assignee = obj.assignee ? String(obj.assignee) : null;
         } else {
           text = String(item);
