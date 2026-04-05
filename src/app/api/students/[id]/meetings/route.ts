@@ -149,20 +149,16 @@ export async function POST(
       return NextResponse.json({ error: 'No valid meetings found' }, { status: 404 });
     }
 
-    // Use the first meeting as the primary record
+    // Use the first meeting as the primary record — only ONE session record
     const primaryMeetingId = meetingIds[0];
 
-    // Insert student_meeting records for each meeting
-    let studentMeeting;
-    for (const mid of meetingIds) {
-      const sm = await queryOne(
-        `INSERT INTO student_meetings (student_id, meeting_id, session_notes, homework, next_session_plan, created_at)
-         VALUES ($1, $2, NULL, NULL, NULL, NOW())
-         ON CONFLICT DO NOTHING RETURNING *`,
-        [studentId, mid]
-      );
-      if (!studentMeeting) studentMeeting = sm;
-    }
+    // Insert ONE student_meeting record using the primary meeting
+    const studentMeeting = await queryOne(
+      `INSERT INTO student_meetings (student_id, meeting_id, session_notes, homework, next_session_plan, created_at)
+       VALUES ($1, $2, NULL, NULL, NULL, NOW())
+       RETURNING *`,
+      [studentId, primaryMeetingId]
+    );
 
     const countRow = await queryOne<{ count: string }>(
       'SELECT COUNT(*) as count FROM student_meetings WHERE student_id = $1',
@@ -170,7 +166,8 @@ export async function POST(
     );
     const meetingCount = parseInt(countRow?.count || '0', 10);
 
-    // Consolidate transcripts from all selected meetings
+    // Consolidate transcripts from ALL selected meetings into one
+    const meetingTitles = meetings.map((m) => m.title as string || 'Untitled').join(' + ');
     const transcriptParts = meetings.map((m, i) => {
       const title = m.title as string || 'Untitled';
       const content = (m.raw_content as string) || '';
@@ -180,6 +177,8 @@ export async function POST(
       return content;
     });
     const transcript = transcriptParts.join('\n\n').substring(0, 16000);
+
+    await log('summary', `Consolidated ${meetings.length} meeting(s) [${meetingTitles}] for student ${student.name}`);
 
     await log('summary', `Attaching ${meetingIds.length} meeting(s) to student ${studentId} (session #${meetingCount})`, { transcript: transcript.length });
 
