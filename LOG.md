@@ -2,6 +2,11 @@
 
 ### 2026-03-29
 - **Project**: cunhas-brain
+- **Change**: Built Artifacts feature. Created API routes (`src/app/api/artifacts/route.ts` for GET list/POST upload, `src/app/api/artifacts/[id]/route.ts` for GET/PUT/DELETE single artifact). POST and PUT auto-generate AI explanations via Claude (whatItIs, keyInsights, relatedConcepts, technologiesUsed). Created `ArtifactsView` component with two-panel layout: left panel has upload button, search bar, and artifact cards list; right panel has sandboxed iframe live preview (60%) and AI explanation display (40%). Upload modal supports both file upload and code paste with auto file-type detection. React/JSX files are wrapped in HTML template with React CDN for rendering. Added fullscreen preview mode. Created artifacts page at `/artifacts`. Added Artifacts link to Nav between GitHub and Students. Responsive layout stacks vertically on mobile.
+- **Outcome**: Fully functional artifact upload, preview, and AI analysis system with live rendering and structured explanations.
+
+### 2026-03-29
+- **Project**: cunhas-brain
 - **Change**: Enhanced Student Management feature. (1) Upgraded meeting attachment API to generate rich session insights (sessionSummary, todos, recommendations, topicsDiscussed, progressNotes, nextSessionPlan) stored as JSON in session_notes column -- first meeting also generates profile + learning plan, subsequent meetings generate per-session insights without changing the plan. (2) Redesigned StudentDetail with collapsible Profile/Learning Plan sections, session timeline with numbered expandable cards, "First Session" badge, topics as tag badges, todos as checklists, AI processing indicator, and clickable meeting links. (3) Improved StudentList cards to show session count, total hours, last session date, progress bar based on learning plan topics, and platform badge. (4) Enhanced students list API to return last_session_date and total_duration.
 - **Outcome**: Richer AI-powered session analysis with structured insights per meeting, and a complete visual redesign of student detail and list views.
 
