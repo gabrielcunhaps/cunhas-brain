@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -281,12 +282,13 @@ function NotesTab({
 // ─── Note Detail ─────────────────────────────────────────────────────────────
 
 function NoteDetail({ note, onDelete, onWikilinkClick }: { note: Note; onDelete: (id: number) => void; onWikilinkClick: (keyword: string) => void }) {
-  // Pre-process: replace [[keyword]] with **keyword** for markdown, collect wikilinks
+  // Process content: convert [[wikilinks]] to styled HTML links inline (Obsidian-style)
   function processContent(content: string): { markdown: string; wikilinks: string[] } {
     const wikilinks: string[] = [];
     const markdown = content.replace(/\[\[([^\]]+)\]\]/g, (_match, keyword) => {
       if (!wikilinks.includes(keyword)) wikilinks.push(keyword);
-      return `**${keyword}**`;
+      // Render as an inline styled link that looks like Obsidian wikilinks
+      return `<a class="wikilink" data-keyword="${keyword}">${keyword}</a>`;
     });
     return { markdown, wikilinks };
   }
@@ -371,11 +373,20 @@ function NoteDetail({ note, onDelete, onWikilinkClick }: { note: Note; onDelete:
           .kb-prose hr { border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 1.5em 0; }
           .kb-prose strong { color: #e4e4e7; font-weight: 600; }
           .kb-prose a { color: #6366f1; text-decoration: underline; }
+          .kb-prose a.wikilink { color: #818cf8; text-decoration: none; background: rgba(99,102,241,0.15); padding: 1px 6px; border-radius: 4px; cursor: pointer; border-bottom: 1px dashed rgba(99,102,241,0.4); font-weight: 500; }
+          .kb-prose a.wikilink:hover { background: rgba(99,102,241,0.3); }
           .kb-prose img { max-width: 100%; border-radius: 8px; }
         `}</style>
         <div className="kb-prose" style={proseStyles}>
           {processed ? (
-            <ReactMarkdown>{processed.markdown}</ReactMarkdown>
+            <div onClick={(e) => {
+              const target = e.target as HTMLElement;
+              if (target.classList.contains('wikilink')) {
+                onWikilinkClick(target.getAttribute('data-keyword') || '');
+              }
+            }}>
+              <ReactMarkdown rehypePlugins={[rehypeRaw]}>{processed.markdown}</ReactMarkdown>
+            </div>
           ) : (
             <p style={{ color: 'var(--text-muted)' }}>No content</p>
           )}
@@ -793,6 +804,7 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
   const [hovered, setHovered] = useState<GraphNode | null>(null);
   const [graphLoaded, setGraphLoaded] = useState(false);
   const [nodeCount, setNodeCount] = useState(0);
+  const [popup, setPopup] = useState<{ node: GraphNode; x: number; y: number; connections: number; keywords: string[] } | null>(null);
   const offsetRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
   const dragRef = useRef<{ dragging: boolean; lastX: number; lastY: number }>({ dragging: false, lastX: 0, lastY: 0 });
@@ -1060,10 +1072,18 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
     const my = e.clientY - rect.top;
     const moved = Math.hypot(mx - dragRef.current.lastX, my - dragRef.current.lastY);
     dragRef.current.dragging = false;
-    // If barely moved, treat as click
+    // If barely moved, treat as click — show popup card
     if (moved < 5) {
       const node = getNodeAt(mx, my);
-      if (node) onNodeClick(node.id);
+      if (node) {
+        const connections = edgesRef.current.filter(
+          (edge) => edge.source === node.id || edge.target === node.id
+        );
+        const keywords = [...new Set(connections.map((c) => c.keyword))].slice(0, 5);
+        setPopup({ node, x: e.clientX, y: e.clientY, connections: connections.length, keywords });
+      } else {
+        setPopup(null);
+      }
     }
   }
 
@@ -1096,6 +1116,51 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
       {graphLoaded && nodeCount === 0 && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
           No notes yet. Upload notes to see the knowledge graph.
+        </div>
+      )}
+      {/* Node popup card */}
+      {popup && (
+        <div
+          style={{
+            position: 'fixed',
+            left: Math.min(popup.x + 10, window.innerWidth - 300),
+            top: Math.min(popup.y - 10, window.innerHeight - 200),
+            width: 280,
+            background: 'var(--surface-1)',
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            padding: 16,
+            zIndex: 100,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+          }}
+        >
+          <h3 style={{ margin: '0 0 8px', fontSize: 14, color: 'var(--text-primary)' }}>{popup.node.title}</h3>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+            {popup.connections} connection{popup.connections !== 1 ? 's' : ''}
+          </div>
+          {popup.keywords.length > 0 && (
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 12 }}>
+              {popup.keywords.map((kw) => (
+                <span key={kw} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: 'rgba(99,102,241,0.15)', color: '#818cf8' }}>
+                  {kw}
+                </span>
+              ))}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => { onNodeClick(popup.node.id); setPopup(null); }}
+              style={{ flex: 1, padding: '6px 0', borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+            >
+              Open Note
+            </button>
+            <button
+              onClick={() => setPopup(null)}
+              style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text-secondary)', fontSize: 12, cursor: 'pointer' }}
+            >
+              Close
+            </button>
+          </div>
         </div>
       )}
     </div>
