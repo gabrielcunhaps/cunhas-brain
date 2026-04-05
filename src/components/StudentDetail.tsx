@@ -834,16 +834,17 @@ export default function StudentDetail({ studentId }: { studentId: string }) {
 
         {/* Attach Meeting Dropdown */}
         {showAttach && (
-          <div className="mb-3 p-3 rounded-xl bg-[var(--surface-1)] border border-[var(--border)] max-h-60 overflow-y-auto">
+          <div className="mb-3 rounded-xl bg-[var(--surface-1)] border border-[var(--border)]">
             {loadingMeetings ? (
               <p className="text-xs text-[var(--text-muted)] py-2 text-center">Loading available meetings...</p>
             ) : availableMeetings.length === 0 ? (
               <p className="text-xs text-[var(--text-muted)] py-2 text-center">No unattached meetings available.</p>
             ) : (
-              <div className="space-y-1">
-                <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider mb-2 px-2">
+              <div>
+                <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider mb-2 px-5 pt-3">
                   Select one or more meetings for this session
                 </p>
+                <div className="max-h-60 overflow-y-auto px-3 space-y-1">
                 {availableMeetings.map((m) => (
                   <label
                     key={m.id}
@@ -869,16 +870,17 @@ export default function StudentDetail({ studentId }: { studentId: string }) {
                     </div>
                   </label>
                 ))}
+                </div>
                 {selectedMeetingIds.size > 0 && (
-                  <div className="pt-2 px-2 flex items-center justify-between">
+                  <div className="p-3 border-t border-[var(--border)] flex items-center justify-between">
                     <span className="text-xs text-[var(--text-muted)]">
                       {selectedMeetingIds.size} meeting{selectedMeetingIds.size > 1 ? 's' : ''} selected
-                      {selectedMeetingIds.size > 1 && ' — will be consolidated into one session'}
+                      {selectedMeetingIds.size > 1 && ' — consolidated into one session'}
                     </span>
                     <button
                       onClick={handleAttach}
                       disabled={attaching}
-                      className="px-4 py-1.5 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:bg-[var(--accent-hover)] disabled:opacity-50 transition-colors"
+                      className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-semibold hover:bg-[var(--accent-hover)] disabled:opacity-50 transition-colors"
                     >
                       {attaching ? 'Analyzing...' : 'Attach & Analyze'}
                     </button>
