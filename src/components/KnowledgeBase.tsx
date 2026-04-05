@@ -1079,7 +1079,7 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
         const connections = edgesRef.current.filter(
           (edge) => edge.source === node.id || edge.target === node.id
         );
-        const keywords = [...new Set(connections.map((c) => c.keyword))].slice(0, 5);
+        const keywords = Array.from(new Set(connections.map((c) => c.keyword))).slice(0, 5);
         setPopup({ node, x: e.clientX, y: e.clientY, connections: connections.length, keywords });
       } else {
         setPopup(null);
