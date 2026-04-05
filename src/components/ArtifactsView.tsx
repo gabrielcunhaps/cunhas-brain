@@ -78,6 +78,7 @@ export default function ArtifactsView() {
   const [showUpload, setShowUpload] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [activeTag, setActiveTag] = useState<string | null>(null);
 
   // Upload form state
   const [uploadTitle, setUploadTitle] = useState('');
@@ -279,45 +280,44 @@ export default function ArtifactsView() {
   const bulkNewCount = bulkFiles.filter((f) => f.checked && !f.isDuplicate).length;
   const bulkDupeCount = bulkFiles.filter((f) => f.isDuplicate).length;
 
-  const filtered = artifacts.filter((a) =>
-    a.title.toLowerCase().includes(search.toLowerCase())
-  );
+  // Collect all unique tags
+  const allTags = Array.from(new Set(artifacts.flatMap((a) => a.tags || [])));
 
-  return (
-    <div className="artifacts-layout" style={{ display: 'flex', height: '100%', background: 'var(--bg)' }}>
-      {/* Left Panel */}
-      <div
-        style={{
-          width: '350px',
-          minWidth: '350px',
-          borderRight: '1px solid var(--border)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-        }}
-      >
+  const filtered = artifacts.filter((a) => {
+    const matchesSearch = a.title.toLowerCase().includes(search.toLowerCase());
+    const matchesTag = !activeTag || a.tags?.includes(activeTag);
+    return matchesSearch && matchesTag;
+  });
+
+  // ─── Gallery View (no artifact selected) ──────────────────────────────────
+  if (!selected) {
+    return (
+      <div style={{ height: '100%', background: 'var(--bg)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {/* Header */}
-        <div style={{ padding: '16px', borderBottom: '1px solid var(--border)' }}>
-          <button
-            onClick={() => setShowUpload(true)}
-            style={{
-              width: '100%',
-              padding: '10px',
-              background: 'var(--accent)',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: '14px',
-              marginBottom: '12px',
-              transition: 'background 0.2s',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent-hover)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--accent)')}
-          >
-            + Upload Artifact
-          </button>
+        <div style={{ padding: '20px 24px 0', flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: 'var(--text-primary)' }}>Artifacts</h1>
+            <button
+              onClick={() => setShowUpload(true)}
+              style={{
+                padding: '8px 18px',
+                background: 'var(--accent)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: 14,
+                transition: 'background 0.2s',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent-hover)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--accent)')}
+            >
+              + New Artifact
+            </button>
+          </div>
+
+          {/* Search */}
           <input
             type="text"
             placeholder="Search artifacts..."
@@ -325,820 +325,263 @@ export default function ArtifactsView() {
             onChange={(e) => setSearch(e.target.value)}
             style={{
               width: '100%',
-              padding: '8px 12px',
-              background: 'var(--surface-2)',
+              padding: '10px 14px',
+              background: 'var(--surface-1)',
               border: '1px solid var(--border)',
-              borderRadius: '6px',
+              borderRadius: 10,
               color: 'var(--text-primary)',
-              fontSize: '13px',
+              fontSize: 14,
               outline: 'none',
               boxSizing: 'border-box',
+              marginBottom: allTags.length > 0 ? 12 : 0,
             }}
           />
-        </div>
 
-        {/* Artifacts List */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
-          {loading ? (
-            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              Loading...
-            </div>
-          ) : filtered.length === 0 ? (
-            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              {search ? 'No matching artifacts' : 'No artifacts yet'}
-            </div>
-          ) : (
-            filtered.map((artifact) => (
-              <div
-                key={artifact.id}
-                onClick={() => selectArtifact(artifact.id)}
+          {/* Tag filter row */}
+          {allTags.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingBottom: 4 }}>
+              <button
+                onClick={() => setActiveTag(null)}
                 style={{
-                  padding: '12px',
-                  marginBottom: '6px',
-                  background: selected?.id === artifact.id ? 'var(--surface-2)' : 'var(--surface-1)',
-                  border: `1px solid ${selected?.id === artifact.id ? 'var(--accent)' : 'var(--border)'}`,
-                  borderRadius: '8px',
+                  padding: '4px 12px',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  borderRadius: 20,
+                  border: '1px solid var(--border)',
+                  background: !activeTag ? 'var(--accent)' : 'var(--surface-1)',
+                  color: !activeTag ? '#fff' : 'var(--text-secondary)',
                   cursor: 'pointer',
                   transition: 'all 0.15s',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontWeight: 600,
-                        fontSize: '14px',
-                        color: 'var(--text-primary)',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      {artifact.title}
-                    </div>
-                    {artifact.description && (
-                      <div
-                        style={{
-                          fontSize: '12px',
-                          color: 'var(--text-muted)',
-                          marginTop: '4px',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                      >
-                        {artifact.description}
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteArtifact(artifact.id);
-                    }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'var(--text-muted)',
-                      cursor: 'pointer',
-                      padding: '2px 6px',
-                      fontSize: '16px',
-                      lineHeight: 1,
-                      borderRadius: '4px',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--danger)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
-                    title="Delete"
-                  >
-                    x
-                  </button>
-                </div>
-                <div style={{ display: 'flex', gap: '6px', marginTop: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                  <span
-                    style={{
-                      fontSize: '11px',
-                      padding: '2px 6px',
-                      background: 'var(--surface-3)',
-                      borderRadius: '4px',
-                      color: 'var(--accent)',
-                      fontWeight: 500,
-                    }}
-                  >
-                    {artifact.file_type.toUpperCase()}
-                  </span>
-                  {artifact.tags?.slice(0, 3).map((tag) => (
-                    <span
-                      key={tag}
-                      style={{
-                        fontSize: '11px',
-                        padding: '2px 6px',
-                        background: 'var(--surface-2)',
-                        borderRadius: '4px',
-                        color: 'var(--text-secondary)',
-                      }}
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-                    {formatDate(artifact.created_at)}
-                  </span>
-                </div>
-              </div>
-            ))
+                All
+              </button>
+              {allTags.map((tag) => (
+                <button
+                  key={tag}
+                  onClick={() => setActiveTag(activeTag === tag ? null : tag)}
+                  style={{
+                    padding: '4px 12px',
+                    fontSize: 12,
+                    fontWeight: 500,
+                    borderRadius: 20,
+                    border: '1px solid var(--border)',
+                    background: activeTag === tag ? 'var(--accent)' : 'var(--surface-1)',
+                    color: activeTag === tag ? '#fff' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
           )}
+        </div>
+
+        {/* Card grid */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px 24px' }}>
+          {loading ? (
+            <div style={{ textAlign: 'center', color: 'var(--text-muted)', paddingTop: 60 }}>Loading...</div>
+          ) : filtered.length === 0 ? (
+            <div style={{ textAlign: 'center', color: 'var(--text-muted)', paddingTop: 60, fontSize: 14 }}>
+              {search || activeTag ? 'No matching artifacts' : 'No artifacts yet. Upload one to get started.'}
+            </div>
+          ) : (
+            <div className="artifacts-card-grid" style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: 20,
+            }}>
+              {filtered.map((artifact) => (
+                <ArtifactCard
+                  key={artifact.id}
+                  artifact={artifact}
+                  onClick={() => selectArtifact(artifact.id)}
+                  onDelete={() => deleteArtifact(artifact.id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Upload Modal */}
+        {showUpload && renderUploadModal()}
+
+        <style>{`
+          .artifacts-card-grid {
+            grid-template-columns: repeat(3, 1fr) !important;
+          }
+          @media (max-width: 1024px) {
+            .artifacts-card-grid {
+              grid-template-columns: repeat(2, 1fr) !important;
+            }
+          }
+          @media (max-width: 640px) {
+            .artifacts-card-grid {
+              grid-template-columns: 1fr !important;
+            }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // ─── Detail View (artifact selected) ──────────────────────────────────────
+  return (
+    <div style={{ height: '100%', background: 'var(--bg)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Back button bar */}
+      <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <button
+          onClick={() => setSelected(null)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'var(--accent)',
+            cursor: 'pointer',
+            fontSize: 14,
+            fontWeight: 500,
+            padding: '4px 0',
+          }}
+        >
+          &larr; Back to gallery
+        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            onClick={() => setFullscreen(true)}
+            style={{
+              padding: '6px 14px',
+              fontSize: 13,
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+            }}
+          >
+            Full Screen
+          </button>
+          <button
+            onClick={() => deleteArtifact(selected.id)}
+            style={{
+              padding: '6px 14px',
+              fontSize: 13,
+              background: 'transparent',
+              border: '1px solid var(--danger, #ef4444)',
+              borderRadius: 6,
+              color: 'var(--danger, #ef4444)',
+              cursor: 'pointer',
+            }}
+          >
+            Delete
+          </button>
         </div>
       </div>
 
-      {/* Right Panel */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {loadingDetail ? (
-          <div
-            style={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--text-muted)',
-            }}
-          >
-            Loading artifact...
-          </div>
-        ) : !selected ? (
-          <div
-            style={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--text-muted)',
-              fontSize: '15px',
-            }}
-          >
-            Select an artifact to preview
-          </div>
-        ) : (
-          <>
-            {/* Live Preview */}
-            <div
-              style={{
-                flex: '0 0 60%',
-                borderBottom: '1px solid var(--border)',
-                display: 'flex',
-                flexDirection: 'column',
-                position: 'relative',
-              }}
-            >
-              <div
-                style={{
-                  padding: '8px 16px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  borderBottom: '1px solid var(--border)',
-                  background: 'var(--surface-1)',
-                }}
-              >
-                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  Live Preview — {selected.title}
+      {loadingDetail ? (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+          Loading artifact...
+        </div>
+      ) : (
+        <div className="artifact-detail-layout" style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+          {/* Left: Interactive content (60%) */}
+          <div style={{ flex: '0 0 60%', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)' }}>
+            <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface-1)' }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                {selected.title}
+              </span>
+              <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: 11, padding: '2px 6px', background: 'var(--surface-3)', borderRadius: 4, color: 'var(--accent)', fontWeight: 500 }}>
+                  {selected.file_type.toUpperCase()}
                 </span>
-                <button
-                  onClick={() => setFullscreen(true)}
-                  style={{
-                    padding: '4px 10px',
-                    fontSize: '12px',
-                    background: 'var(--surface-2)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '4px',
-                    color: 'var(--text-secondary)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Open Full Screen
-                </button>
+                {selected.tags?.map((tag) => (
+                  <span key={tag} style={{ fontSize: 11, padding: '2px 6px', background: 'var(--surface-2)', borderRadius: 4, color: 'var(--text-secondary)' }}>
+                    {tag}
+                  </span>
+                ))}
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                  {formatDate(selected.created_at)}
+                </span>
               </div>
-              <iframe
-                srcDoc={getPreviewContent(selected)}
-                sandbox="allow-scripts allow-same-origin"
-                style={{
-                  flex: 1,
-                  width: '100%',
-                  border: 'none',
-                  background: '#fff',
-                }}
-                title="Artifact Preview"
-              />
             </div>
+            <iframe
+              srcDoc={getPreviewContent(selected)}
+              sandbox="allow-scripts allow-same-origin"
+              style={{ flex: 1, width: '100%', border: 'none', background: '#fff', minHeight: '70vh' }}
+              title="Artifact Preview"
+            />
+          </div>
 
-            {/* AI Explanation */}
-            <div style={{ flex: '0 0 40%', overflowY: 'auto', padding: '16px' }}>
-              {selected.ai_explanation ? (
-                <div>
-                  <h3
-                    style={{
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      color: 'var(--text-primary)',
-                      marginBottom: '8px',
-                      marginTop: 0,
-                    }}
-                  >
-                    What It Is
-                  </h3>
-                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 16px' }}>
-                    {selected.ai_explanation.whatItIs}
-                  </p>
+          {/* Right: AI analysis (40%) */}
+          <div style={{ flex: '0 0 40%', overflowY: 'auto', padding: 20 }}>
+            {selected.ai_explanation ? (
+              <div>
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8, marginTop: 0 }}>
+                  What It Is
+                </h3>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 16px' }}>
+                  {selected.ai_explanation.whatItIs}
+                </p>
 
-                  <h3
-                    style={{
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      color: 'var(--text-primary)',
-                      marginBottom: '8px',
-                      marginTop: 0,
-                    }}
-                  >
-                    Key Insights
-                  </h3>
-                  <ul style={{ margin: '0 0 16px', paddingLeft: '20px' }}>
-                    {selected.ai_explanation.keyInsights?.map((insight, i) => (
-                      <li
-                        key={i}
-                        style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '4px' }}
-                      >
-                        {insight}
-                      </li>
-                    ))}
-                  </ul>
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8, marginTop: 0 }}>
+                  Key Insights
+                </h3>
+                <ul style={{ margin: '0 0 16px', paddingLeft: 20 }}>
+                  {selected.ai_explanation.keyInsights?.map((insight, i) => (
+                    <li key={i} style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 4 }}>
+                      {insight}
+                    </li>
+                  ))}
+                </ul>
 
-                  <h3
-                    style={{
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      color: 'var(--text-primary)',
-                      marginBottom: '8px',
-                      marginTop: 0,
-                    }}
-                  >
-                    Related Concepts
-                  </h3>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '16px' }}>
-                    {selected.ai_explanation.relatedConcepts?.map((concept) => (
-                      <span
-                        key={concept}
-                        style={{
-                          fontSize: '12px',
-                          padding: '4px 10px',
-                          background: 'var(--surface-2)',
-                          border: '1px solid var(--border)',
-                          borderRadius: '12px',
-                          color: 'var(--text-secondary)',
-                        }}
-                      >
-                        {concept}
-                      </span>
-                    ))}
-                  </div>
-
-                  <h3
-                    style={{
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      color: 'var(--text-primary)',
-                      marginBottom: '8px',
-                      marginTop: 0,
-                    }}
-                  >
-                    Technologies Used
-                  </h3>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {selected.ai_explanation.technologiesUsed?.map((tech) => (
-                      <span
-                        key={tech}
-                        style={{
-                          fontSize: '12px',
-                          padding: '4px 10px',
-                          background: 'var(--surface-3)',
-                          borderRadius: '12px',
-                          color: 'var(--accent)',
-                          fontWeight: 500,
-                        }}
-                      >
-                        {tech}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  {/* Loading skeleton */}
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} style={{ marginBottom: '16px' }}>
-                      <div
-                        style={{
-                          width: '120px',
-                          height: '16px',
-                          background: 'var(--surface-2)',
-                          borderRadius: '4px',
-                          marginBottom: '8px',
-                        }}
-                      />
-                      <div
-                        style={{
-                          width: '100%',
-                          height: '12px',
-                          background: 'var(--surface-2)',
-                          borderRadius: '4px',
-                          marginBottom: '4px',
-                        }}
-                      />
-                      <div
-                        style={{
-                          width: '80%',
-                          height: '12px',
-                          background: 'var(--surface-2)',
-                          borderRadius: '4px',
-                        }}
-                      />
-                    </div>
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8, marginTop: 0 }}>
+                  Related Concepts
+                </h3>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
+                  {selected.ai_explanation.relatedConcepts?.map((concept) => (
+                    <span key={concept} style={{ fontSize: 12, padding: '4px 10px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-secondary)' }}>
+                      {concept}
+                    </span>
                   ))}
                 </div>
-              )}
-            </div>
-          </>
-        )}
-      </div>
 
-      {/* Upload Modal */}
-      {showUpload && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 100,
-          }}
-          onClick={() => !uploading && setShowUpload(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: 'var(--surface-1)',
-              border: '1px solid var(--border)',
-              borderRadius: '12px',
-              padding: '24px',
-              width: '560px',
-              maxWidth: '90vw',
-              maxHeight: '85vh',
-              overflowY: 'auto',
-            }}
-          >
-            <h2 style={{ margin: '0 0 16px', fontSize: '18px', color: 'var(--text-primary)' }}>
-              Upload Artifact
-            </h2>
-
-            {/* Top-level tab: Paste vs Upload Files */}
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-              <button
-                onClick={() => setUploadTab('paste')}
-                style={{
-                  padding: '6px 14px',
-                  fontSize: '13px',
-                  background: uploadTab === 'paste' ? 'var(--accent)' : 'var(--surface-2)',
-                  color: uploadTab === 'paste' ? '#fff' : 'var(--text-secondary)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                }}
-              >
-                Paste
-              </button>
-              <button
-                onClick={() => setUploadTab('bulk')}
-                style={{
-                  padding: '6px 14px',
-                  fontSize: '13px',
-                  background: uploadTab === 'bulk' ? 'var(--accent)' : 'var(--surface-2)',
-                  color: uploadTab === 'bulk' ? '#fff' : 'var(--text-secondary)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                }}
-              >
-                Upload Files
-              </button>
-            </div>
-
-            {uploadTab === 'paste' ? (
-              <>
-                <label style={{ display: 'block', marginBottom: '12px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                    Title *
-                  </span>
-                  <input
-                    type="text"
-                    value={uploadTitle}
-                    onChange={(e) => setUploadTitle(e.target.value)}
-                    placeholder="My Cool Component"
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      background: 'var(--surface-2)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '6px',
-                      color: 'var(--text-primary)',
-                      fontSize: '14px',
-                      outline: 'none',
-                      boxSizing: 'border-box',
-                    }}
-                  />
-                </label>
-
-                {/* Paste/File sub-mode */}
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                  <button
-                    onClick={() => setUploadMode('paste')}
-                    style={{
-                      padding: '6px 14px',
-                      fontSize: '13px',
-                      background: uploadMode === 'paste' ? 'var(--accent)' : 'var(--surface-2)',
-                      color: uploadMode === 'paste' ? '#fff' : 'var(--text-secondary)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Paste Code
-                  </button>
-                  <button
-                    onClick={() => setUploadMode('file')}
-                    style={{
-                      padding: '6px 14px',
-                      fontSize: '13px',
-                      background: uploadMode === 'file' ? 'var(--accent)' : 'var(--surface-2)',
-                      color: uploadMode === 'file' ? '#fff' : 'var(--text-secondary)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Upload File
-                  </button>
-                </div>
-
-                {uploadMode === 'paste' ? (
-                  <label style={{ display: 'block', marginBottom: '12px' }}>
-                    <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                      Code *
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8, marginTop: 0 }}>
+                  Technologies Used
+                </h3>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {selected.ai_explanation.technologiesUsed?.map((tech) => (
+                    <span key={tech} style={{ fontSize: 12, padding: '4px 10px', background: 'var(--surface-3)', borderRadius: 12, color: 'var(--accent)', fontWeight: 500 }}>
+                      {tech}
                     </span>
-                    <textarea
-                      value={uploadCode}
-                      onChange={(e) => setUploadCode(e.target.value)}
-                      placeholder="Paste your HTML or React code here..."
-                      rows={12}
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        background: 'var(--surface-2)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '6px',
-                        color: 'var(--text-primary)',
-                        fontSize: '13px',
-                        fontFamily: 'monospace',
-                        outline: 'none',
-                        resize: 'vertical',
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                  </label>
-                ) : (
-                  <div style={{ marginBottom: '12px' }}>
-                    <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                      File *
-                    </span>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".html,.htm,.jsx,.tsx"
-                      onChange={handleFileUpload}
-                      style={{
-                        width: '100%',
-                        padding: '8px',
-                        background: 'var(--surface-2)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '6px',
-                        color: 'var(--text-primary)',
-                        fontSize: '13px',
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                    {uploadCode && (
-                      <div style={{ fontSize: '12px', color: 'var(--success)', marginTop: '4px' }}>
-                        File loaded ({uploadCode.length} characters)
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <label style={{ display: 'block', marginBottom: '20px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                    Tags (comma-separated)
-                  </span>
-                  <input
-                    type="text"
-                    value={uploadTags}
-                    onChange={(e) => setUploadTags(e.target.value)}
-                    placeholder="react, animation, dashboard"
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      background: 'var(--surface-2)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '6px',
-                      color: 'var(--text-primary)',
-                      fontSize: '14px',
-                      outline: 'none',
-                      boxSizing: 'border-box',
-                    }}
-                  />
-                </label>
-
-                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                  <button
-                    onClick={() => setShowUpload(false)}
-                    disabled={uploading}
-                    style={{
-                      padding: '8px 16px',
-                      background: 'var(--surface-2)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '6px',
-                      color: 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleUpload}
-                    disabled={uploading || !uploadTitle.trim() || !uploadCode.trim()}
-                    style={{
-                      padding: '8px 16px',
-                      background: uploading || !uploadTitle.trim() || !uploadCode.trim() ? 'var(--surface-3)' : 'var(--accent)',
-                      border: 'none',
-                      borderRadius: '6px',
-                      color: '#fff',
-                      cursor: uploading ? 'wait' : 'pointer',
-                      fontWeight: 600,
-                      fontSize: '14px',
-                    }}
-                  >
-                    {uploading ? 'Uploading & Analyzing...' : 'Upload & Analyze'}
-                  </button>
+                  ))}
                 </div>
-              </>
+              </div>
             ) : (
-              <>
-                {/* Bulk file upload controls */}
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                  <input
-                    ref={bulkFilesInputRef}
-                    type="file"
-                    accept=".html,.htm,.jsx,.tsx"
-                    multiple
-                    onChange={handleBulkFileSelect}
-                    style={{ display: 'none' }}
-                  />
-                  <input
-                    ref={bulkFolderInputRef}
-                    type="file"
-                    accept=".html,.htm,.jsx,.tsx"
-                    /* @ts-expect-error webkitdirectory is a non-standard attribute */
-                    webkitdirectory=""
-                    onChange={handleBulkFileSelect}
-                    style={{ display: 'none' }}
-                  />
-                  <button
-                    onClick={() => bulkFilesInputRef.current?.click()}
-                    style={{
-                      padding: '6px 12px',
-                      background: 'var(--surface-2)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '6px',
-                      color: 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      fontSize: '13px',
-                    }}
-                  >
-                    Select Files
-                  </button>
-                  <button
-                    onClick={() => bulkFolderInputRef.current?.click()}
-                    style={{
-                      padding: '6px 12px',
-                      background: 'var(--surface-2)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '6px',
-                      color: 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      fontSize: '13px',
-                    }}
-                  >
-                    Select Folder
-                  </button>
-                </div>
-
-                {bulkFiles.length > 0 && (
-                  <>
-                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                      {bulkFiles.length} file{bulkFiles.length !== 1 ? 's' : ''} selected
-                      {bulkDupeCount > 0 && (
-                        <span style={{ color: 'var(--warning, #f59e0b)', marginLeft: '8px' }}>
-                          ({bulkNewCount} new, {bulkDupeCount} duplicate{bulkDupeCount !== 1 ? 's' : ''} skipped)
-                        </span>
-                      )}
-                    </div>
-
-                    <div style={{
-                      maxHeight: '240px',
-                      overflowY: 'auto',
-                      border: '1px solid var(--border)',
-                      borderRadius: '8px',
-                      marginBottom: '12px',
-                    }}>
-                      {bulkFiles.map((file, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: '8px 12px',
-                            borderBottom: i < bulkFiles.length - 1 ? '1px solid var(--border)' : 'none',
-                            background: file.isDuplicate ? 'var(--surface-2)' : 'transparent',
-                            opacity: file.isDuplicate ? 0.6 : 1,
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={file.checked}
-                            disabled={file.isDuplicate}
-                            onChange={() => toggleBulkFile(i)}
-                            style={{ cursor: file.isDuplicate ? 'not-allowed' : 'pointer' }}
-                          />
-                          <span style={{ flex: 1, fontSize: '13px', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {file.title}
-                          </span>
-                          {file.isDuplicate && (
-                            <span style={{
-                              fontSize: '11px',
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              background: 'var(--warning, #f59e0b)',
-                              color: '#000',
-                              fontWeight: 600,
-                              whiteSpace: 'nowrap',
-                            }}>
-                              Duplicate
-                            </span>
-                          )}
-                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                            {(file.content.length / 1024).toFixed(1)}KB
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                <label style={{ display: 'block', marginBottom: '20px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                    Tags for all files (comma-separated)
-                  </span>
-                  <input
-                    type="text"
-                    value={bulkTags}
-                    onChange={(e) => setBulkTags(e.target.value)}
-                    placeholder="react, animation, dashboard"
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      background: 'var(--surface-2)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '6px',
-                      color: 'var(--text-primary)',
-                      fontSize: '14px',
-                      outline: 'none',
-                      boxSizing: 'border-box',
-                    }}
-                  />
-                </label>
-
-                {bulkProgress && (
-                  <div style={{ marginBottom: '12px' }}>
-                    <div style={{ fontSize: '13px', color: 'var(--accent)', marginBottom: '4px' }}>
-                      Uploading {bulkProgress.current}/{bulkProgress.total}...
-                    </div>
-                    <div style={{ height: '4px', background: 'var(--surface-3)', borderRadius: '2px' }}>
-                      <div style={{
-                        height: '100%',
-                        background: 'var(--accent)',
-                        borderRadius: '2px',
-                        width: `${(bulkProgress.current / bulkProgress.total) * 100}%`,
-                        transition: 'width 0.3s',
-                      }} />
-                    </div>
+              <div>
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} style={{ marginBottom: 16 }}>
+                    <div style={{ width: 120, height: 16, background: 'var(--surface-2)', borderRadius: 4, marginBottom: 8 }} />
+                    <div style={{ width: '100%', height: 12, background: 'var(--surface-2)', borderRadius: 4, marginBottom: 4 }} />
+                    <div style={{ width: '80%', height: 12, background: 'var(--surface-2)', borderRadius: 4 }} />
                   </div>
-                )}
-
-                {bulkErrors.length > 0 && (
-                  <div style={{ marginBottom: '12px', padding: '8px', background: 'var(--surface-2)', borderRadius: '6px', border: '1px solid var(--danger)' }}>
-                    {bulkErrors.map((err, i) => (
-                      <div key={i} style={{ fontSize: '12px', color: 'var(--danger)', marginBottom: '2px' }}>{err}</div>
-                    ))}
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                  <button
-                    onClick={() => setShowUpload(false)}
-                    disabled={uploading || !!bulkProgress}
-                    style={{
-                      padding: '8px 16px',
-                      background: 'var(--surface-2)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '6px',
-                      color: 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleBulkUpload}
-                    disabled={bulkNewCount === 0 || uploading || !!bulkProgress}
-                    style={{
-                      padding: '8px 16px',
-                      background: bulkNewCount === 0 || uploading ? 'var(--surface-3)' : 'var(--accent)',
-                      border: 'none',
-                      borderRadius: '6px',
-                      color: '#fff',
-                      cursor: uploading ? 'wait' : 'pointer',
-                      fontWeight: 600,
-                      fontSize: '14px',
-                    }}
-                  >
-                    {bulkProgress
-                      ? `Uploading ${bulkProgress.current}/${bulkProgress.total}...`
-                      : `Upload & Analyze All (${bulkNewCount})`}
-                  </button>
-                </div>
-              </>
+                ))}
+              </div>
             )}
           </div>
         </div>
       )}
 
+      {/* Upload Modal */}
+      {showUpload && renderUploadModal()}
+
       {/* Fullscreen Preview Modal */}
       {fullscreen && selected && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'var(--bg)',
-            zIndex: 200,
-            display: 'flex',
-            flexDirection: 'column',
-          }}
-        >
-          <div
-            style={{
-              padding: '8px 16px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              borderBottom: '1px solid var(--border)',
-              background: 'var(--surface-1)',
-            }}
-          >
-            <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
-              {selected.title}
-            </span>
+        <div style={{ position: 'fixed', inset: 0, background: 'var(--bg)', zIndex: 200, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', background: 'var(--surface-1)' }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{selected.title}</span>
             <button
               onClick={() => setFullscreen(false)}
-              style={{
-                padding: '4px 12px',
-                fontSize: '13px',
-                background: 'var(--surface-2)',
-                border: '1px solid var(--border)',
-                borderRadius: '4px',
-                color: 'var(--text-secondary)',
-                cursor: 'pointer',
-              }}
+              style={{ padding: '4px 12px', fontSize: 13, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-secondary)', cursor: 'pointer' }}
             >
               Close
             </button>
@@ -1152,21 +595,333 @@ export default function ArtifactsView() {
         </div>
       )}
 
-      {/* Responsive: mobile stacking via media query in a style tag */}
       <style>{`
         @media (max-width: 768px) {
-          .artifacts-layout {
+          .artifact-detail-layout {
             flex-direction: column !important;
           }
-          .artifacts-layout > div:first-child {
-            width: 100% !important;
-            min-width: 100% !important;
-            max-height: 40vh;
+          .artifact-detail-layout > div:first-child {
+            flex: none !important;
+            height: 50vh;
             border-right: none !important;
             border-bottom: 1px solid var(--border);
           }
+          .artifact-detail-layout > div:last-child {
+            flex: 1 !important;
+          }
         }
       `}</style>
+    </div>
+  );
+
+  // ─── Upload Modal (shared between both views) ─────────────────────────────
+  function renderUploadModal() {
+    return (
+      <div
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+        onClick={() => !uploading && setShowUpload(false)}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, width: 560, maxWidth: '90vw', maxHeight: '85vh', overflowY: 'auto' }}
+        >
+          <h2 style={{ margin: '0 0 16px', fontSize: 18, color: 'var(--text-primary)' }}>Upload Artifact</h2>
+
+          {/* Top-level tab: Paste vs Upload Files */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <button
+              onClick={() => setUploadTab('paste')}
+              style={{ padding: '6px 14px', fontSize: 13, background: uploadTab === 'paste' ? 'var(--accent)' : 'var(--surface-2)', color: uploadTab === 'paste' ? '#fff' : 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
+            >
+              Paste
+            </button>
+            <button
+              onClick={() => setUploadTab('bulk')}
+              style={{ padding: '6px 14px', fontSize: 13, background: uploadTab === 'bulk' ? 'var(--accent)' : 'var(--surface-2)', color: uploadTab === 'bulk' ? '#fff' : 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
+            >
+              Upload Files
+            </button>
+          </div>
+
+          {uploadTab === 'paste' ? (
+            <>
+              <label style={{ display: 'block', marginBottom: 12 }}>
+                <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Title *</span>
+                <input
+                  type="text"
+                  value={uploadTitle}
+                  onChange={(e) => setUploadTitle(e.target.value)}
+                  placeholder="My Cool Component"
+                  style={{ width: '100%', padding: '8px 12px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)', fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
+                />
+              </label>
+
+              {/* Paste/File sub-mode */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                <button
+                  onClick={() => setUploadMode('paste')}
+                  style={{ padding: '6px 14px', fontSize: 13, background: uploadMode === 'paste' ? 'var(--accent)' : 'var(--surface-2)', color: uploadMode === 'paste' ? '#fff' : 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
+                >
+                  Paste Code
+                </button>
+                <button
+                  onClick={() => setUploadMode('file')}
+                  style={{ padding: '6px 14px', fontSize: 13, background: uploadMode === 'file' ? 'var(--accent)' : 'var(--surface-2)', color: uploadMode === 'file' ? '#fff' : 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
+                >
+                  Upload File
+                </button>
+              </div>
+
+              {uploadMode === 'paste' ? (
+                <label style={{ display: 'block', marginBottom: 12 }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Code *</span>
+                  <textarea
+                    value={uploadCode}
+                    onChange={(e) => setUploadCode(e.target.value)}
+                    placeholder="Paste your HTML or React code here..."
+                    rows={12}
+                    style={{ width: '100%', padding: '10px 12px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)', fontSize: 13, fontFamily: 'monospace', outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+                  />
+                </label>
+              ) : (
+                <div style={{ marginBottom: 12 }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>File *</span>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".html,.htm,.jsx,.tsx"
+                    onChange={handleFileUpload}
+                    style={{ width: '100%', padding: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)', fontSize: 13, boxSizing: 'border-box' }}
+                  />
+                  {uploadCode && (
+                    <div style={{ fontSize: 12, color: 'var(--success)', marginTop: 4 }}>
+                      File loaded ({uploadCode.length} characters)
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <label style={{ display: 'block', marginBottom: 20 }}>
+                <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Tags (comma-separated)</span>
+                <input
+                  type="text"
+                  value={uploadTags}
+                  onChange={(e) => setUploadTags(e.target.value)}
+                  placeholder="react, animation, dashboard"
+                  style={{ width: '100%', padding: '8px 12px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)', fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
+                />
+              </label>
+
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setShowUpload(false)}
+                  disabled={uploading}
+                  style={{ padding: '8px 16px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUpload}
+                  disabled={uploading || !uploadTitle.trim() || !uploadCode.trim()}
+                  style={{ padding: '8px 16px', background: uploading || !uploadTitle.trim() || !uploadCode.trim() ? 'var(--surface-3)' : 'var(--accent)', border: 'none', borderRadius: 6, color: '#fff', cursor: uploading ? 'wait' : 'pointer', fontWeight: 600, fontSize: 14 }}
+                >
+                  {uploading ? 'Uploading & Analyzing...' : 'Upload & Analyze'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Bulk file upload controls */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                <input ref={bulkFilesInputRef} type="file" accept=".html,.htm,.jsx,.tsx" multiple onChange={handleBulkFileSelect} style={{ display: 'none' }} />
+                {/* @ts-expect-error webkitdirectory is a non-standard attribute */}
+                <input ref={bulkFolderInputRef} type="file" accept=".html,.htm,.jsx,.tsx" webkitdirectory="" onChange={handleBulkFileSelect} style={{ display: 'none' }} />
+                <button onClick={() => bulkFilesInputRef.current?.click()} style={{ padding: '6px 12px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13 }}>
+                  Select Files
+                </button>
+                <button onClick={() => bulkFolderInputRef.current?.click()} style={{ padding: '6px 12px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13 }}>
+                  Select Folder
+                </button>
+              </div>
+
+              {bulkFiles.length > 0 && (
+                <>
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                    {bulkFiles.length} file{bulkFiles.length !== 1 ? 's' : ''} selected
+                    {bulkDupeCount > 0 && (
+                      <span style={{ color: 'var(--warning, #f59e0b)', marginLeft: 8 }}>
+                        ({bulkNewCount} new, {bulkDupeCount} duplicate{bulkDupeCount !== 1 ? 's' : ''} skipped)
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 12 }}>
+                    {bulkFiles.map((file, i) => (
+                      <div
+                        key={i}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: i < bulkFiles.length - 1 ? '1px solid var(--border)' : 'none', background: file.isDuplicate ? 'var(--surface-2)' : 'transparent', opacity: file.isDuplicate ? 0.6 : 1 }}
+                      >
+                        <input type="checkbox" checked={file.checked} disabled={file.isDuplicate} onChange={() => toggleBulkFile(i)} style={{ cursor: file.isDuplicate ? 'not-allowed' : 'pointer' }} />
+                        <span style={{ flex: 1, fontSize: 13, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.title}</span>
+                        {file.isDuplicate && (
+                          <span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, background: 'var(--warning, #f59e0b)', color: '#000', fontWeight: 600, whiteSpace: 'nowrap' }}>Duplicate</span>
+                        )}
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{(file.content.length / 1024).toFixed(1)}KB</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <label style={{ display: 'block', marginBottom: 20 }}>
+                <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Tags for all files (comma-separated)</span>
+                <input
+                  type="text"
+                  value={bulkTags}
+                  onChange={(e) => setBulkTags(e.target.value)}
+                  placeholder="react, animation, dashboard"
+                  style={{ width: '100%', padding: '8px 12px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)', fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
+                />
+              </label>
+
+              {bulkProgress && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, color: 'var(--accent)', marginBottom: 4 }}>Uploading {bulkProgress.current}/{bulkProgress.total}...</div>
+                  <div style={{ height: 4, background: 'var(--surface-3)', borderRadius: 2 }}>
+                    <div style={{ height: '100%', background: 'var(--accent)', borderRadius: 2, width: `${(bulkProgress.current / bulkProgress.total) * 100}%`, transition: 'width 0.3s' }} />
+                  </div>
+                </div>
+              )}
+
+              {bulkErrors.length > 0 && (
+                <div style={{ marginBottom: 12, padding: 8, background: 'var(--surface-2)', borderRadius: 6, border: '1px solid var(--danger)' }}>
+                  {bulkErrors.map((err, i) => (
+                    <div key={i} style={{ fontSize: 12, color: 'var(--danger)', marginBottom: 2 }}>{err}</div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setShowUpload(false)}
+                  disabled={uploading || !!bulkProgress}
+                  style={{ padding: '8px 16px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleBulkUpload}
+                  disabled={bulkNewCount === 0 || uploading || !!bulkProgress}
+                  style={{ padding: '8px 16px', background: bulkNewCount === 0 || uploading ? 'var(--surface-3)' : 'var(--accent)', border: 'none', borderRadius: 6, color: '#fff', cursor: uploading ? 'wait' : 'pointer', fontWeight: 600, fontSize: 14 }}
+                >
+                  {bulkProgress ? `Uploading ${bulkProgress.current}/${bulkProgress.total}...` : `Upload & Analyze All (${bulkNewCount})`}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+}
+
+// ─── Artifact Card Component ──────────────────────────────────────────────────
+
+function ArtifactCard({ artifact, onClick, onDelete }: { artifact: ArtifactListItem; onClick: () => void; onDelete: () => void }) {
+  const [hovered, setHovered] = useState(false);
+
+  // Build a minimal HTML preview for the iframe srcdoc
+  const previewHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:sans-serif;overflow:hidden}</style></head><body><div style="padding:8px;font-size:11px;color:#888">Preview not available for list items</div></body></html>`;
+
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: 'var(--surface-1)',
+        border: `1px solid ${hovered ? 'var(--accent)' : 'var(--border)'}`,
+        borderRadius: 16,
+        overflow: 'hidden',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+        transform: hovered ? 'translateY(-2px)' : 'none',
+        boxShadow: hovered ? '0 8px 24px rgba(0,0,0,0.3)' : 'none',
+      }}
+    >
+      {/* Preview thumbnail */}
+      <div style={{
+        height: 180,
+        overflow: 'hidden',
+        position: 'relative',
+        background: '#1a1a1f',
+        pointerEvents: 'none',
+      }}>
+        {/* We use a placeholder since we only have list items without file_content */}
+        <div style={{
+          width: '200%',
+          height: '200%',
+          transform: 'scale(0.5)',
+          transformOrigin: 'top left',
+        }}>
+          <iframe
+            srcDoc={previewHtml}
+            sandbox=""
+            style={{ width: '100%', height: '100%', border: 'none', pointerEvents: 'none' }}
+            title={`Preview ${artifact.title}`}
+            tabIndex={-1}
+          />
+        </div>
+        {/* Gradient fade */}
+        <div style={{
+          content: '',
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: 40,
+          background: 'linear-gradient(transparent, var(--surface-1))',
+          pointerEvents: 'none',
+        }} />
+      </div>
+
+      {/* Card info */}
+      <div style={{ padding: '12px 16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {artifact.title}
+            </div>
+            {artifact.description && (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>
+                {artifact.description}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 6px', fontSize: 16, lineHeight: 1, borderRadius: 4, flexShrink: 0 }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--danger)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+            title="Delete"
+          >
+            x
+          </button>
+        </div>
+        <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, padding: '2px 6px', background: 'var(--surface-3)', borderRadius: 4, color: 'var(--accent)', fontWeight: 500 }}>
+            {artifact.file_type.toUpperCase()}
+          </span>
+          {artifact.tags?.slice(0, 3).map((tag) => (
+            <span key={tag} style={{ fontSize: 11, padding: '2px 6px', background: 'var(--surface-2)', borderRadius: 4, color: 'var(--text-secondary)' }}>
+              {tag}
+            </span>
+          ))}
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>
+            {formatDate(artifact.created_at)}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

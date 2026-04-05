@@ -2,6 +2,11 @@
 
 ### 2026-03-29
 - **Project**: cunhas-brain
+- **Change**: Redesigned Artifacts and Knowledge Base pages from sidebar-list + detail panel layout to a Claude-inspired card gallery + detail flow. Gallery view shows a responsive card grid (3/2/1 columns) with iframe thumbnail previews for artifacts and rendered markdown previews for notes, plus search bar and tag filter pills. Clicking a card transitions to a detail view with back-to-gallery button, 60/40 split (content left, AI analysis right), and mobile-responsive stacking. All existing functionality preserved (upload modals, bulk upload, delete, fullscreen, graph tab, chat tab).
+- **Outcome**: Both pages now use a modern gallery-first layout matching the Claude artifact gallery style, with hover effects, gradient fades on card previews, and tag filtering.
+
+### 2026-03-29
+- **Project**: cunhas-brain
 - **Change**: Fixed KnowledgeBase component -- two critical issues. (1) Markdown rendering: replaced inline wikilink badge injection (which broke ReactMarkdown into fragments) with pre-processing that converts `[[keyword]]` to bold text and shows wikilinks as a separate clickable badges section below content; wrapped rendered markdown in a styled document container with proper prose typography (headings, paragraphs, lists, code blocks, blockquotes). (2) Knowledge graph: fixed "No notes yet" overlay showing despite nodes existing (was checking ref which doesn't trigger re-render, switched to state); fixed invisible nodes/labels by replacing CSS `var()` usage in canvas context with actual color values; added node coloring by connection count, white node borders, dark pill backgrounds behind labels, glow effect on hover, and subtle dot grid background.
 - **Outcome**: Note preview renders clean formatted markdown with wikilinks as a separate section. Knowledge graph shows colorful visible nodes with readable labels and no false "empty" overlay.
 

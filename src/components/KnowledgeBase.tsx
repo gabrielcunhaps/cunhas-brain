@@ -127,10 +127,12 @@ export default function KnowledgeBase() {
         {tab === 'notes' && (
           <NotesTab
             notes={filtered}
+            allNotes={notes}
             selectedNote={selectedNote}
             search={search}
             onSearchChange={setSearch}
             onSelectNote={selectNote}
+            onDeselectNote={() => setSelectedNote(null)}
             onDeleteNote={deleteNote}
             onUploadClick={() => setShowUpload(true)}
             onWikilinkClick={handleWikilinkClick}
@@ -188,240 +190,455 @@ export default function KnowledgeBase() {
   );
 }
 
-// ─── Notes Tab ───────────────────────────────────────────────────────────────
+// ─── Notes Tab (Gallery + Detail) ───────────────────────────────────────────
 
 function NotesTab({
-  notes, selectedNote, search, onSearchChange, onSelectNote, onDeleteNote, onUploadClick, onWikilinkClick,
+  notes, allNotes, selectedNote, search, onSearchChange, onSelectNote, onDeselectNote, onDeleteNote, onUploadClick, onWikilinkClick,
 }: {
   notes: Note[];
+  allNotes: Note[];
   selectedNote: Note | null;
   search: string;
   onSearchChange: (v: string) => void;
   onSelectNote: (id: number) => void;
+  onDeselectNote: () => void;
   onDeleteNote: (id: number) => void;
   onUploadClick: () => void;
   onWikilinkClick: (keyword: string) => void;
 }) {
-  return (
-    <div style={{ display: 'flex', height: '100%' }}>
-      {/* Left panel */}
-      <div style={{ width: 350, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', background: 'var(--surface-1)' }}>
-        <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <button onClick={onUploadClick} style={btnStyle}>
-            + Upload Note
-          </button>
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+
+  // Collect all unique tags
+  const allTags = Array.from(new Set(allNotes.flatMap((n) => n.tags || [])));
+
+  const tagFiltered = activeTag
+    ? notes.filter((n) => n.tags?.includes(activeTag))
+    : notes;
+
+  // ─── Gallery View (no note selected) ────────────────────────────────────
+  if (!selectedNote) {
+    return (
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Header */}
+        <div style={{ padding: '20px 24px 0', flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: 'var(--text-primary)' }}>Knowledge Base</h1>
+            <button
+              onClick={onUploadClick}
+              style={{
+                padding: '8px 18px',
+                background: 'var(--accent)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: 14,
+                transition: 'background 0.2s',
+              }}
+            >
+              + Upload Note
+            </button>
+          </div>
+
+          {/* Search */}
           <input
             type="text"
             placeholder="Search notes..."
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            style={inputStyle}
+            style={{
+              width: '100%',
+              padding: '10px 14px',
+              background: 'var(--surface-1)',
+              border: '1px solid var(--border)',
+              borderRadius: 10,
+              color: 'var(--text-primary)',
+              fontSize: 14,
+              outline: 'none',
+              boxSizing: 'border-box',
+              marginBottom: allTags.length > 0 ? 12 : 0,
+            }}
           />
-        </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 12px' }}>
-          {notes.map((n) => (
-            <div
-              key={n.id}
-              onClick={() => onSelectNote(n.id)}
-              style={{
-                padding: 12,
-                borderRadius: 8,
-                marginBottom: 6,
-                cursor: 'pointer',
-                background: selectedNote?.id === n.id ? 'var(--surface-3)' : 'var(--surface-2)',
-                border: selectedNote?.id === n.id ? '1px solid var(--accent)' : '1px solid transparent',
-              }}
-            >
-              <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', marginBottom: 4 }}>
-                {n.title}
-              </div>
-              {n.summary && (
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>
-                  {n.summary}
-                </div>
-              )}
-              <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                {n.tags?.map((t) => (
-                  <span key={t} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: 'var(--surface-3)', color: 'var(--text-secondary)' }}>
-                    {t}
-                  </span>
-                ))}
-                {(n.wikilinks?.length ?? 0) > 0 && (
-                  <span style={{ fontSize: 10, color: 'var(--accent)', marginLeft: 'auto' }}>
-                    {n.wikilinks!.length} links
-                  </span>
-                )}
-              </div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
-                {new Date(n.created_at).toLocaleDateString()}
-              </div>
-            </div>
-          ))}
-          {notes.length === 0 && (
-            <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 24, fontSize: 13 }}>
-              No notes yet. Upload one to get started.
+
+          {/* Tag filter row */}
+          {allTags.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingBottom: 4 }}>
+              <button
+                onClick={() => setActiveTag(null)}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  borderRadius: 20,
+                  border: '1px solid var(--border)',
+                  background: !activeTag ? 'var(--accent)' : 'var(--surface-1)',
+                  color: !activeTag ? '#fff' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+              >
+                All
+              </button>
+              {allTags.map((tag) => (
+                <button
+                  key={tag}
+                  onClick={() => setActiveTag(activeTag === tag ? null : tag)}
+                  style={{
+                    padding: '4px 12px',
+                    fontSize: 12,
+                    fontWeight: 500,
+                    borderRadius: 20,
+                    border: '1px solid var(--border)',
+                    background: activeTag === tag ? 'var(--accent)' : 'var(--surface-1)',
+                    color: activeTag === tag ? '#fff' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {tag}
+                </button>
+              ))}
             </div>
           )}
         </div>
+
+        {/* Card grid */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px 24px' }}>
+          {tagFiltered.length === 0 ? (
+            <div style={{ textAlign: 'center', color: 'var(--text-muted)', paddingTop: 60, fontSize: 14 }}>
+              {search || activeTag ? 'No matching notes' : 'No notes yet. Upload one to get started.'}
+            </div>
+          ) : (
+            <div className="notes-card-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
+              {tagFiltered.map((note) => (
+                <NoteCard key={note.id} note={note} onClick={() => onSelectNote(note.id)} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <style>{`
+          .notes-card-grid {
+            grid-template-columns: repeat(3, 1fr) !important;
+          }
+          @media (max-width: 1024px) {
+            .notes-card-grid {
+              grid-template-columns: repeat(2, 1fr) !important;
+            }
+          }
+          @media (max-width: 640px) {
+            .notes-card-grid {
+              grid-template-columns: 1fr !important;
+            }
+          }
+        `}</style>
       </div>
+    );
+  }
 
-      {/* Right panel */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
-        {selectedNote ? (
-          <NoteDetail note={selectedNote} onDelete={onDeleteNote} onWikilinkClick={onWikilinkClick} />
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
-            Select a note to view its content
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Note Detail ─────────────────────────────────────────────────────────────
-
-function NoteDetail({ note, onDelete, onWikilinkClick }: { note: Note; onDelete: (id: number) => void; onWikilinkClick: (keyword: string) => void }) {
-  // Process content: convert [[wikilinks]] to styled HTML links inline (Obsidian-style)
+  // ─── Detail View (note selected) ────────────────────────────────────────
+  // Process content: convert [[wikilinks]] to styled HTML links
   function processContent(content: string): { markdown: string; wikilinks: string[] } {
     const wikilinks: string[] = [];
     const markdown = content.replace(/\[\[([^\]]+)\]\]/g, (_match, keyword) => {
       if (!wikilinks.includes(keyword)) wikilinks.push(keyword);
-      // Render as an inline styled link that looks like Obsidian wikilinks
       return `<a class="wikilink" data-keyword="${keyword}">${keyword}</a>`;
     });
     return { markdown, wikilinks };
   }
 
-  const processed = note.content ? processContent(note.content) : null;
-
-  const proseStyles: React.CSSProperties = {
-    color: '#e4e4e7',
-    lineHeight: 1.7,
-    fontSize: 15,
-  };
+  const processed = selectedNote.content ? processContent(selectedNote.content) : null;
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-        <h2 style={{ margin: 0, color: 'var(--text-primary)', fontSize: 22 }}>{note.title}</h2>
-        <button onClick={() => onDelete(note.id)} style={{ ...btnDangerStyle, fontSize: 12, padding: '4px 12px' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Back button bar */}
+      <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <button
+          onClick={onDeselectNote}
+          style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 14, fontWeight: 500, padding: '4px 0' }}
+        >
+          &larr; Back to gallery
+        </button>
+        <button
+          onClick={() => onDeleteNote(selectedNote.id)}
+          style={{ ...btnDangerStyle, fontSize: 12, padding: '4px 12px' }}
+        >
           Delete
         </button>
       </div>
 
-      {/* Metadata bar */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        {note.tags?.map((t) => (
-          <span key={t} style={tagStyle}>{t}</span>
-        ))}
-        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          Created {new Date(note.created_at).toLocaleDateString()}
-        </span>
-        {(note.connectedNotes?.length ?? 0) > 0 && (
-          <span style={{ fontSize: 12, color: 'var(--accent)' }}>
-            {note.connectedNotes!.length} connected note{note.connectedNotes!.length !== 1 ? 's' : ''}
-          </span>
-        )}
-      </div>
+      {/* Two-panel layout */}
+      <div className="note-detail-layout" style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        {/* Left: Rendered markdown (60%) */}
+        <div style={{ flex: '0 0 60%', overflowY: 'auto', padding: 24, borderRight: '1px solid var(--border)' }}>
+          <h2 style={{ margin: '0 0 12px', color: 'var(--text-primary)', fontSize: 22 }}>{selectedNote.title}</h2>
 
-      {/* Connected notes */}
-      {note.connectedNotes && note.connectedNotes.length > 0 && (
-        <div style={{ marginBottom: 16, padding: 12, background: 'var(--surface-2)', borderRadius: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Connected Notes</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {note.connectedNotes.map((cn) => (
-              <span
-                key={`${cn.id}-${cn.keyword}`}
-                onClick={() => onWikilinkClick(cn.keyword)}
-                style={{
-                  fontSize: 12,
-                  padding: '4px 10px',
-                  borderRadius: 6,
-                  background: 'var(--surface-3)',
-                  color: 'var(--accent)',
-                  cursor: 'pointer',
-                  border: '1px solid var(--border)',
-                }}
-              >
-                {cn.title} ({cn.keyword})
-              </span>
+          {/* Tags */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+            {selectedNote.tags?.map((t) => (
+              <span key={t} style={tagStyle}>{t}</span>
             ))}
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Created {new Date(selectedNote.created_at).toLocaleDateString()}
+            </span>
+          </div>
+
+          {/* Content */}
+          <div style={{
+            background: '#1a1a1f',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 12,
+            padding: 32,
+            maxWidth: 720,
+          }}>
+            <style>{`
+              .kb-prose h1 { font-size: 1.5em; font-weight: 700; margin: 0 0 0.5em; color: #e4e4e7; }
+              .kb-prose h2 { font-size: 1.25em; font-weight: 700; margin: 1.2em 0 0.5em; color: #e4e4e7; }
+              .kb-prose h3 { font-size: 1.1em; font-weight: 600; margin: 1em 0 0.4em; color: #e4e4e7; }
+              .kb-prose p { margin: 0 0 1em; line-height: 1.7; color: #d1d1d6; }
+              .kb-prose ul, .kb-prose ol { margin: 0 0 1em; padding-left: 1.5em; color: #d1d1d6; }
+              .kb-prose li { margin-bottom: 0.25em; line-height: 1.6; }
+              .kb-prose blockquote { border-left: 3px solid #6366f1; padding-left: 1em; margin: 0 0 1em; color: #a1a1aa; }
+              .kb-prose code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; color: #c4b5fd; }
+              .kb-prose pre { background: rgba(255,255,255,0.06); padding: 16px; border-radius: 8px; overflow-x: auto; margin: 0 0 1em; }
+              .kb-prose pre code { background: none; padding: 0; font-size: 0.85em; color: #d1d1d6; }
+              .kb-prose hr { border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 1.5em 0; }
+              .kb-prose strong { color: #e4e4e7; font-weight: 600; }
+              .kb-prose a { color: #6366f1; text-decoration: underline; }
+              .kb-prose a.wikilink { color: #818cf8; text-decoration: none; background: rgba(99,102,241,0.15); padding: 1px 6px; border-radius: 4px; cursor: pointer; border-bottom: 1px dashed rgba(99,102,241,0.4); font-weight: 500; }
+              .kb-prose a.wikilink:hover { background: rgba(99,102,241,0.3); }
+              .kb-prose img { max-width: 100%; border-radius: 8px; }
+            `}</style>
+            <div className="kb-prose" style={{ color: '#e4e4e7', lineHeight: 1.7, fontSize: 15 }}>
+              {processed ? (
+                <div onClick={(e) => {
+                  const target = e.target as HTMLElement;
+                  if (target.classList.contains('wikilink')) {
+                    onWikilinkClick(target.getAttribute('data-keyword') || '');
+                  }
+                }}>
+                  <ReactMarkdown rehypePlugins={[rehypeRaw]}>{processed.markdown}</ReactMarkdown>
+                </div>
+              ) : (
+                <p style={{ color: 'var(--text-muted)' }}>No content</p>
+              )}
+            </div>
+
+            {/* Wikilinks as badges below content */}
+            {processed && processed.wikilinks.length > 0 && (
+              <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#a1a1aa', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Linked Topics
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {processed.wikilinks.map((kw) => (
+                    <span
+                      key={kw}
+                      onClick={() => onWikilinkClick(kw)}
+                      style={{
+                        display: 'inline-block',
+                        padding: '4px 10px',
+                        borderRadius: 6,
+                        background: 'rgba(99,102,241,0.15)',
+                        color: '#818cf8',
+                        cursor: 'pointer',
+                        fontSize: 12,
+                        fontWeight: 500,
+                        border: '1px solid rgba(99,102,241,0.25)',
+                        transition: 'background 0.15s',
+                      }}
+                    >
+                      {kw}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      )}
 
-      {/* Content — document-style container */}
-      <div style={{
-        background: '#1a1a1f',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: 12,
-        padding: 32,
-        maxWidth: 720,
-      }}>
-        <style>{`
-          .kb-prose h1 { font-size: 1.5em; font-weight: 700; margin: 0 0 0.5em; color: #e4e4e7; }
-          .kb-prose h2 { font-size: 1.25em; font-weight: 700; margin: 1.2em 0 0.5em; color: #e4e4e7; }
-          .kb-prose h3 { font-size: 1.1em; font-weight: 600; margin: 1em 0 0.4em; color: #e4e4e7; }
-          .kb-prose p { margin: 0 0 1em; line-height: 1.7; color: #d1d1d6; }
-          .kb-prose ul, .kb-prose ol { margin: 0 0 1em; padding-left: 1.5em; color: #d1d1d6; }
-          .kb-prose li { margin-bottom: 0.25em; line-height: 1.6; }
-          .kb-prose blockquote { border-left: 3px solid #6366f1; padding-left: 1em; margin: 0 0 1em; color: #a1a1aa; }
-          .kb-prose code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; color: #c4b5fd; }
-          .kb-prose pre { background: rgba(255,255,255,0.06); padding: 16px; border-radius: 8px; overflow-x: auto; margin: 0 0 1em; }
-          .kb-prose pre code { background: none; padding: 0; font-size: 0.85em; color: #d1d1d6; }
-          .kb-prose hr { border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 1.5em 0; }
-          .kb-prose strong { color: #e4e4e7; font-weight: 600; }
-          .kb-prose a { color: #6366f1; text-decoration: underline; }
-          .kb-prose a.wikilink { color: #818cf8; text-decoration: none; background: rgba(99,102,241,0.15); padding: 1px 6px; border-radius: 4px; cursor: pointer; border-bottom: 1px dashed rgba(99,102,241,0.4); font-weight: 500; }
-          .kb-prose a.wikilink:hover { background: rgba(99,102,241,0.3); }
-          .kb-prose img { max-width: 100%; border-radius: 8px; }
-        `}</style>
-        <div className="kb-prose" style={proseStyles}>
-          {processed ? (
-            <div onClick={(e) => {
-              const target = e.target as HTMLElement;
-              if (target.classList.contains('wikilink')) {
-                onWikilinkClick(target.getAttribute('data-keyword') || '');
-              }
-            }}>
-              <ReactMarkdown rehypePlugins={[rehypeRaw]}>{processed.markdown}</ReactMarkdown>
+        {/* Right: AI analysis panel (40%) */}
+        <div style={{ flex: '0 0 40%', overflowY: 'auto', padding: 20 }}>
+          {/* Summary */}
+          {selectedNote.summary && (
+            <div style={{ marginBottom: 20 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8, marginTop: 0 }}>Summary</h3>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
+                {selectedNote.summary}
+              </p>
             </div>
-          ) : (
-            <p style={{ color: 'var(--text-muted)' }}>No content</p>
+          )}
+
+          {/* Connected notes */}
+          {selectedNote.connectedNotes && selectedNote.connectedNotes.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8, marginTop: 0 }}>Connected Notes</h3>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {selectedNote.connectedNotes.map((cn) => (
+                  <span
+                    key={`${cn.id}-${cn.keyword}`}
+                    onClick={() => onWikilinkClick(cn.keyword)}
+                    style={{
+                      fontSize: 12,
+                      padding: '4px 10px',
+                      borderRadius: 6,
+                      background: 'var(--surface-3)',
+                      color: 'var(--accent)',
+                      cursor: 'pointer',
+                      border: '1px solid var(--border)',
+                    }}
+                  >
+                    {cn.title} ({cn.keyword})
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Wikilinks / Linked topics */}
+          {selectedNote.wikilinks && selectedNote.wikilinks.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8, marginTop: 0 }}>Linked Topics</h3>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {selectedNote.wikilinks.map((kw) => (
+                  <span
+                    key={kw}
+                    onClick={() => onWikilinkClick(kw)}
+                    style={{
+                      fontSize: 12,
+                      padding: '4px 10px',
+                      borderRadius: 12,
+                      background: 'rgba(99,102,241,0.15)',
+                      color: '#818cf8',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                    }}
+                  >
+                    {kw}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tags */}
+          {selectedNote.tags && selectedNote.tags.length > 0 && (
+            <div>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8, marginTop: 0 }}>Tags</h3>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {selectedNote.tags.map((t) => (
+                  <span key={t} style={{ fontSize: 12, padding: '4px 10px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-secondary)' }}>
+                    {t}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* If nothing to show */}
+          {!selectedNote.summary && (!selectedNote.connectedNotes || selectedNote.connectedNotes.length === 0) && (!selectedNote.wikilinks || selectedNote.wikilinks.length === 0) && (
+            <div style={{ color: 'var(--text-muted)', fontSize: 13, paddingTop: 20 }}>
+              No AI analysis available for this note yet.
+            </div>
           )}
         </div>
+      </div>
 
-        {/* Wikilinks as badges below content */}
-        {processed && processed.wikilinks.length > 0 && (
-          <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#a1a1aa', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Linked Topics
-            </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {processed.wikilinks.map((kw) => (
-                <span
-                  key={kw}
-                  onClick={() => onWikilinkClick(kw)}
-                  style={{
-                    display: 'inline-block',
-                    padding: '4px 10px',
-                    borderRadius: 6,
-                    background: 'rgba(99,102,241,0.15)',
-                    color: '#818cf8',
-                    cursor: 'pointer',
-                    fontSize: 12,
-                    fontWeight: 500,
-                    border: '1px solid rgba(99,102,241,0.25)',
-                    transition: 'background 0.15s',
-                  }}
-                >
-                  {kw}
-                </span>
-              ))}
-            </div>
+      <style>{`
+        @media (max-width: 768px) {
+          .note-detail-layout {
+            flex-direction: column !important;
+          }
+          .note-detail-layout > div:first-child {
+            flex: none !important;
+            border-right: none !important;
+            border-bottom: 1px solid var(--border);
+          }
+          .note-detail-layout > div:last-child {
+            flex: 1 !important;
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ─── Note Card Component ────────────────────────────────────────────────────
+
+function NoteCard({ note, onClick }: { note: Note; onClick: () => void }) {
+  const [hovered, setHovered] = useState(false);
+
+  // Truncate content for preview
+  const previewText = note.summary || '';
+
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: 'var(--surface-1)',
+        border: `1px solid ${hovered ? 'var(--accent)' : 'var(--border)'}`,
+        borderRadius: 16,
+        overflow: 'hidden',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+        transform: hovered ? 'translateY(-2px)' : 'none',
+        boxShadow: hovered ? '0 8px 24px rgba(0,0,0,0.3)' : 'none',
+      }}
+    >
+      {/* Preview area - rendered markdown snippet */}
+      <div style={{
+        height: 180,
+        overflow: 'hidden',
+        position: 'relative',
+        background: '#1a1a1f',
+        padding: '14px 16px',
+        fontSize: 12,
+        lineHeight: 1.6,
+        color: '#d1d1d6',
+      }}>
+        <div className="kb-prose" style={{ pointerEvents: 'none' }}>
+          <ReactMarkdown>{previewText.slice(0, 200)}</ReactMarkdown>
+        </div>
+        {/* Gradient fade */}
+        <div style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: 40,
+          background: 'linear-gradient(transparent, var(--surface-1))',
+          pointerEvents: 'none',
+        }} />
+      </div>
+
+      {/* Card info */}
+      <div style={{ padding: '12px 16px' }}>
+        <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 4 }}>
+          {note.title}
+        </div>
+        {note.summary && (
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, marginBottom: 8 }}>
+            {note.summary}
           </div>
         )}
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+          {note.tags?.slice(0, 3).map((t) => (
+            <span key={t} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: 'var(--surface-3)', color: 'var(--text-secondary)' }}>
+              {t}
+            </span>
+          ))}
+          {(note.wikilinks?.length ?? 0) > 0 && (
+            <span style={{ fontSize: 10, color: 'var(--accent)', marginLeft: 'auto' }}>
+              {note.wikilinks!.length} links
+            </span>
+          )}
+        </div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+          {new Date(note.created_at).toLocaleDateString()}
+        </div>
       </div>
     </div>
   );
@@ -832,7 +1049,6 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
     const h = canvas?.parentElement?.clientHeight || 600;
 
     if (mode === 'files') {
-      // Files view: nodes = notes, edges = connections between notes
       const connCount: Record<number, number> = {};
       for (const e of data.edges) {
         connCount[e.source] = (connCount[e.source] || 0) + 1;
@@ -847,11 +1063,9 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
       }));
       edgesRef.current = data.edges;
     } else {
-      // Words view: nodes = keywords/wikilinks, edges = keywords that appear in the same note
       const keywordSet = new Map<string, { id: number; noteIds: number[] }>();
       let nextId = -1;
 
-      // Collect all keywords and which notes they appear in
       for (const node of data.nodes) {
         for (const wl of (node.wikilinks || [])) {
           const key = wl.toLowerCase();
@@ -862,7 +1076,6 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
         }
       }
 
-      // Build keyword nodes
       const kwNodes: GraphNode[] = [];
       keywordSet.forEach((val, key) => {
         kwNodes.push({
@@ -876,7 +1089,6 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
         });
       });
 
-      // Build edges: two keywords are connected if they share a note
       const kwEdges: { source: number; target: number; keyword: string }[] = [];
       const kwArr = Array.from(keywordSet.entries());
       for (let i = 0; i < kwArr.length; i++) {
@@ -1011,12 +1223,11 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
       ctx.translate(off.x, off.y);
       ctx.scale(z, z);
 
-      // Color palette for nodes by connection count
       function getNodeColor(connections: number): string {
-        if (connections >= 5) return '#6366f1'; // indigo — hub nodes
-        if (connections >= 3) return '#8b5cf6'; // purple
-        if (connections >= 1) return '#06b6d4'; // cyan
-        return '#64748b'; // slate — isolated
+        if (connections >= 5) return '#6366f1';
+        if (connections >= 3) return '#8b5cf6';
+        if (connections >= 1) return '#06b6d4';
+        return '#64748b';
       }
 
       // Edges
@@ -1039,7 +1250,6 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
         const isHL = hovered?.id === n.id;
         const color = getNodeColor(n.connections);
 
-        // Glow effect on hover
         if (isHL) {
           ctx.save();
           ctx.shadowColor = color;
@@ -1051,7 +1261,6 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
           ctx.restore();
         }
 
-        // Node circle
         ctx.beginPath();
         ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
         ctx.fillStyle = isHL ? '#a5b4fc' : color;
@@ -1060,7 +1269,6 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
         ctx.lineWidth = isHL ? 2 : 1;
         ctx.stroke();
 
-        // Label with dark background for readability
         const label = n.title.length > 20 ? n.title.slice(0, 18) + '...' : n.title;
         const fontSize = isHL ? 13 : 11;
         ctx.font = `${fontSize}px sans-serif`;
@@ -1068,7 +1276,6 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
         const textWidth = ctx.measureText(label).width;
         const labelY = n.y - r - 8;
 
-        // Background pill behind text
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
         const padX = 4, padY = 2;
         ctx.beginPath();
@@ -1081,7 +1288,6 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
         );
         ctx.fill();
 
-        // Text
         ctx.fillStyle = isHL ? '#ffffff' : '#e4e4e7';
         ctx.fillText(label, n.x, labelY + fontSize / 2 - 2);
       }
@@ -1133,7 +1339,6 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
     const my = e.clientY - rect.top;
     const moved = Math.hypot(mx - dragRef.current.lastX, my - dragRef.current.lastY);
     dragRef.current.dragging = false;
-    // If barely moved, treat as click — show popup card
     if (moved < 5) {
       const node = getNodeAt(mx, my);
       if (node) {
