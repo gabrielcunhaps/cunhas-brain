@@ -424,17 +424,30 @@ export default function StudentDetail({ studentId }: { studentId: string }) {
     }
   };
 
-  const handleAttach = async (meetingId: string) => {
+  const [selectedMeetingIds, setSelectedMeetingIds] = useState<Set<string>>(new Set());
+
+  const toggleMeetingSelection = (id: string) => {
+    setSelectedMeetingIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleAttach = async () => {
+    const ids = Array.from(selectedMeetingIds);
+    if (ids.length === 0) return;
     setAttaching(true);
     setAiProcessing(true);
     try {
       const res = await fetch(`/api/students/${studentId}/meetings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ meetingId }),
+        body: JSON.stringify({ meetingIds: ids }),
       });
       if (!res.ok) throw new Error('Failed to attach meeting');
       setShowAttach(false);
+      setSelectedMeetingIds(new Set());
       await fetchStudent();
     } catch (err) {
       console.error('Failed to attach meeting:', err);
@@ -829,19 +842,24 @@ export default function StudentDetail({ studentId }: { studentId: string }) {
             ) : (
               <div className="space-y-1">
                 <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider mb-2 px-2">
-                  Select a meeting to attach and analyze
+                  Select one or more meetings for this session
                 </p>
                 {availableMeetings.map((m) => (
-                  <button
+                  <label
                     key={m.id}
-                    onClick={() => handleAttach(m.id)}
-                    disabled={attaching}
-                    className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-[var(--surface-2)] transition-colors disabled:opacity-50 flex items-center justify-between group"
+                    className="w-full px-3 py-2 text-sm rounded-lg hover:bg-[var(--surface-2)] transition-colors flex items-center gap-3 cursor-pointer"
                   >
-                    <span className="text-[var(--text-primary)] truncate group-hover:text-[var(--accent)] transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={selectedMeetingIds.has(m.id)}
+                      onChange={() => toggleMeetingSelection(m.id)}
+                      disabled={attaching}
+                      style={{ accentColor: 'var(--accent)' }}
+                    />
+                    <span className="text-[var(--text-primary)] truncate flex-1">
                       {m.title}
                     </span>
-                    <div className="flex items-center gap-2 ml-2 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
                       <span className="text-xs text-[var(--text-muted)]">
                         {formatDuration(m.duration)}
                       </span>
@@ -849,8 +867,23 @@ export default function StudentDetail({ studentId }: { studentId: string }) {
                         {new Date(m.date).toLocaleDateString()}
                       </span>
                     </div>
-                  </button>
+                  </label>
                 ))}
+                {selectedMeetingIds.size > 0 && (
+                  <div className="pt-2 px-2 flex items-center justify-between">
+                    <span className="text-xs text-[var(--text-muted)]">
+                      {selectedMeetingIds.size} meeting{selectedMeetingIds.size > 1 ? 's' : ''} selected
+                      {selectedMeetingIds.size > 1 && ' — will be consolidated into one session'}
+                    </span>
+                    <button
+                      onClick={handleAttach}
+                      disabled={attaching}
+                      className="px-4 py-1.5 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:bg-[var(--accent-hover)] disabled:opacity-50 transition-colors"
+                    >
+                      {attaching ? 'Analyzing...' : 'Attach & Analyze'}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

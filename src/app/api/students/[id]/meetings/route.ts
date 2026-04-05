@@ -124,10 +124,11 @@ export async function POST(
   try {
     const studentId = params.id;
     const body = await request.json();
-    const { meetingId } = body;
+    // Support both single meetingId and array of meetingIds
+    const meetingIds: string[] = body.meetingIds || (body.meetingId ? [body.meetingId] : []);
 
-    if (!meetingId) {
-      return NextResponse.json({ error: 'meetingId is required' }, { status: 400 });
+    if (meetingIds.length === 0) {
+      return NextResponse.json({ error: 'meetingId or meetingIds is required' }, { status: 400 });
     }
 
     const student = await queryOne<Record<string, unknown>>(
@@ -138,20 +139,30 @@ export async function POST(
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
 
-    const meeting = await queryOne<Record<string, unknown>>(
-      'SELECT * FROM meetings WHERE id = $1',
-      [meetingId]
-    );
-    if (!meeting) {
-      return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
+    // Fetch all selected meetings
+    const meetings: Record<string, unknown>[] = [];
+    for (const mid of meetingIds) {
+      const m = await queryOne<Record<string, unknown>>('SELECT * FROM meetings WHERE id = $1', [mid]);
+      if (m) meetings.push(m);
+    }
+    if (meetings.length === 0) {
+      return NextResponse.json({ error: 'No valid meetings found' }, { status: 404 });
     }
 
-    const studentMeeting = await queryOne(
-      `INSERT INTO student_meetings (student_id, meeting_id, session_notes, homework, next_session_plan, created_at)
-       VALUES ($1, $2, NULL, NULL, NULL, NOW())
-       RETURNING *`,
-      [studentId, meetingId]
-    );
+    // Use the first meeting as the primary record
+    const primaryMeetingId = meetingIds[0];
+
+    // Insert student_meeting records for each meeting
+    let studentMeeting;
+    for (const mid of meetingIds) {
+      const sm = await queryOne(
+        `INSERT INTO student_meetings (student_id, meeting_id, session_notes, homework, next_session_plan, created_at)
+         VALUES ($1, $2, NULL, NULL, NULL, NOW())
+         ON CONFLICT DO NOTHING RETURNING *`,
+        [studentId, mid]
+      );
+      if (!studentMeeting) studentMeeting = sm;
+    }
 
     const countRow = await queryOne<{ count: string }>(
       'SELECT COUNT(*) as count FROM student_meetings WHERE student_id = $1',
@@ -159,7 +170,16 @@ export async function POST(
     );
     const meetingCount = parseInt(countRow?.count || '0', 10);
 
-    const transcript = (meeting.raw_content as string) || '';
+    // Consolidate transcripts from all selected meetings
+    const transcriptParts = meetings.map((m, i) => {
+      const title = m.title as string || 'Untitled';
+      const content = (m.raw_content as string) || '';
+      if (meetings.length > 1) {
+        return `--- Part ${i + 1}: ${title} ---\n${content}`;
+      }
+      return content;
+    });
+    const transcript = transcriptParts.join('\n\n').substring(0, 16000);
 
     await log('summary', `Attaching meeting ${meetingId} to student ${studentId} (meeting #${meetingCount})`, { transcript: transcript.length });
 
@@ -186,7 +206,7 @@ export async function POST(
           await queryOne(
             `UPDATE student_meetings SET session_notes = $1, homework = $2, next_session_plan = $3
              WHERE student_id = $4 AND meeting_id = $5 RETURNING *`,
-            [JSON.stringify(insights), insights.homework || null, insights.nextSessionPlan || null, studentId, meetingId]
+            [JSON.stringify(insights), insights.homework || null, insights.nextSessionPlan || null, studentId, primaryMeetingId]
           );
           await log('summary', `Learning plan and session insights generated for ${student.name}`);
         }
@@ -200,9 +220,9 @@ export async function POST(
         const previousMeetings = await query(
           `SELECT sm.session_notes, sm.homework, sm.next_session_plan, m.title, m.date
            FROM student_meetings sm JOIN meetings m ON m.id = sm.meeting_id
-           WHERE sm.student_id = $1 AND sm.meeting_id != $2
+           WHERE sm.student_id = $1 AND sm.meeting_id != ALL($2::int[])
            ORDER BY m.date DESC LIMIT 3`,
-          [studentId, meetingId]
+          [studentId, meetingIds]
         );
 
         const prevContext = previousMeetings
