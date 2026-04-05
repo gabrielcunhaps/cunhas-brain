@@ -5,6 +5,86 @@ import { log } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
+const FIRST_MEETING_PROMPT = (name: string, transcript: string) => `You are an expert AI tutor assistant analyzing a first session with a new student.
+
+Student: ${name}
+
+Meeting transcript:
+${transcript.substring(0, 12000)}
+
+Analyze this first meeting and return a comprehensive JSON response. Think about what will help this student BUILD useful things and grow through hands-on practice.
+
+Return as JSON only, no markdown:
+{
+  "profile": {
+    "background": "Student's professional and educational background",
+    "goals": "What they want to achieve — be specific",
+    "level": "Current skill level (beginner/intermediate/advanced) with nuance",
+    "style": "How they learn best based on the conversation",
+    "strengths": "What they already know well",
+    "gaps": "Key knowledge gaps identified"
+  },
+  "learningPlan": {
+    "topics": ["Topic 1: description", "Topic 2: description"],
+    "milestones": ["Milestone 1: what success looks like", "Milestone 2"],
+    "timeline": "Realistic timeline with phases"
+  },
+  "sessionInsights": {
+    "sessionSummary": "What was discussed, what was demonstrated, what clicked for the student",
+    "keyLearnings": ["Specific thing the student learned or understood during this session"],
+    "bestPractices": ["Good practice or principle that was taught/demonstrated"],
+    "topicsDiscussed": ["topic 1", "topic 2"],
+    "todos": ["Specific actionable task for the student"],
+    "buildProjects": [
+      {
+        "project": "Name of something to build",
+        "description": "One line on what to build",
+        "instruction": "One-line instruction they can give to an AI to start building this",
+        "whatTheyLearn": "What skill/concept this teaches",
+        "whyItMatters": "Why this is valuable for their goals"
+      }
+    ],
+    "recommendations": ["Recommendation for what to explore or practice next"],
+    "homework": "Specific homework assignment with clear deliverables",
+    "nextSessionPlan": "What to cover next session based on where we left off"
+  }
+}`;
+
+const SUBSEQUENT_MEETING_PROMPT = (name: string, learningPlan: string, prevContext: string, transcript: string) => `You are an expert AI tutor assistant analyzing a follow-up session with a student.
+
+Student: ${name}
+Learning Plan: ${learningPlan}
+
+Previous sessions:
+${prevContext}
+
+Latest meeting transcript:
+${transcript.substring(0, 12000)}
+
+Analyze this session in the context of the student's learning journey. Focus on what they BUILT, what they LEARNED, and what they should BUILD next.
+
+Return as JSON only, no markdown:
+{
+  "sessionSummary": "Detailed summary — what was covered, what was demonstrated, what the student practiced",
+  "keyLearnings": ["Specific concept or skill the student grasped during this session"],
+  "bestPractices": ["Good practice or principle that was taught/reinforced"],
+  "topicsDiscussed": ["topic 1", "topic 2"],
+  "progressNotes": "What improved since last session, what skills are developing, what's still challenging",
+  "todos": ["Specific actionable task with clear outcome"],
+  "buildProjects": [
+    {
+      "project": "Name of something to build",
+      "description": "One line on what to build",
+      "instruction": "One-line instruction they can give to an AI to start building this",
+      "whatTheyLearn": "What skill/concept this teaches",
+      "whyItMatters": "Why this is valuable for their goals"
+    }
+  ],
+  "recommendations": ["Recommendation for resources, tools, or practices to explore"],
+  "homework": "Specific homework with clear deliverables and deadline suggestion",
+  "nextSessionPlan": "Concrete plan for next session — what to review, what new ground to cover"
+}`;
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -18,7 +98,6 @@ export async function POST(
       return NextResponse.json({ error: 'meetingId is required' }, { status: 400 });
     }
 
-    // Verify student exists
     const student = await queryOne<Record<string, unknown>>(
       'SELECT * FROM students WHERE id = $1',
       [studentId]
@@ -27,7 +106,6 @@ export async function POST(
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
 
-    // Get the meeting transcript
     const meeting = await queryOne<Record<string, unknown>>(
       'SELECT * FROM meetings WHERE id = $1',
       [meetingId]
@@ -36,7 +114,6 @@ export async function POST(
       return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
     }
 
-    // Insert the student_meeting record
     const studentMeeting = await queryOne(
       `INSERT INTO student_meetings (student_id, meeting_id, session_notes, homework, next_session_plan, created_at)
        VALUES ($1, $2, NULL, NULL, NULL, NOW())
@@ -44,7 +121,6 @@ export async function POST(
       [studentId, meetingId]
     );
 
-    // Count existing meetings for this student (including the one just inserted)
     const countRow = await queryOne<{ count: string }>(
       'SELECT COUNT(*) as count FROM student_meetings WHERE student_id = $1',
       [studentId]
@@ -56,39 +132,13 @@ export async function POST(
     await log('summary', `Attaching meeting ${meetingId} to student ${studentId} (meeting #${meetingCount})`, { transcript: transcript.length });
 
     if (meetingCount === 1 && transcript) {
-      // First meeting: generate learning plan, profile, AND session insights
       try {
         await log('summary', `Generating learning plan and session insights for ${student.name}`);
         const anthropic = await getAnthropicClient();
         const response = await anthropic.messages.create({
           model: 'claude-haiku-4-5-20251001',
-          max_tokens: 3000,
-          messages: [
-            {
-              role: 'user',
-              content: `Based on this first meeting transcript with a new student named ${student.name}, create:
-1. A student profile (background, goals, experience level, learning style)
-2. A personalized learning plan (topics, milestones, timeline)
-3. Session insights for this specific meeting
-
-Meeting transcript:
-${transcript.substring(0, 8000)}
-
-Return as JSON only, no markdown:
-{
-  "profile": { "background": "...", "goals": "...", "level": "...", "style": "..." },
-  "learningPlan": { "topics": ["..."], "milestones": ["..."], "timeline": "..." },
-  "sessionInsights": {
-    "sessionSummary": "Summary of what was discussed and accomplished in this session",
-    "todos": ["actionable task 1", "actionable task 2"],
-    "recommendations": ["recommendation for the student 1", "recommendation 2"],
-    "topicsDiscussed": ["topic 1", "topic 2"],
-    "homework": "Homework assignment if any",
-    "nextSessionPlan": "What to focus on in the next session"
-  }
-}`,
-            },
-          ],
+          max_tokens: 4096,
+          messages: [{ role: 'user', content: FIRST_MEETING_PROMPT(String(student.name), transcript) }],
         });
 
         const textBlock = response.content.find((b) => b.type === 'text');
@@ -96,26 +146,16 @@ Return as JSON only, no markdown:
           const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
           const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : textBlock.text);
 
-          // Update student profile and learning plan
           await queryOne(
             `UPDATE students SET profile = $1, learning_plan = $2, updated_at = NOW() WHERE id = $3 RETURNING *`,
             [JSON.stringify(parsed.profile), JSON.stringify(parsed.learningPlan), studentId]
           );
 
-          // Update the student_meeting row with session insights
           const insights = parsed.sessionInsights || {};
           await queryOne(
-            `UPDATE student_meetings
-             SET session_notes = $1, homework = $2, next_session_plan = $3
-             WHERE student_id = $4 AND meeting_id = $5
-             RETURNING *`,
-            [
-              JSON.stringify(insights),
-              insights.homework || null,
-              insights.nextSessionPlan || null,
-              studentId,
-              meetingId,
-            ]
+            `UPDATE student_meetings SET session_notes = $1, homework = $2, next_session_plan = $3
+             WHERE student_id = $4 AND meeting_id = $5 RETURNING *`,
+            [JSON.stringify(insights), insights.homework || null, insights.nextSessionPlan || null, studentId, meetingId]
           );
           await log('summary', `Learning plan and session insights generated for ${student.name}`);
         }
@@ -125,29 +165,20 @@ Return as JSON only, no markdown:
         await log('error', `AI profile generation failed for ${student.name}: ${errMsg}`);
       }
     } else if (meetingCount > 1 && transcript) {
-      // Subsequent meetings: generate per-meeting insights (keep learning plan unchanged)
       try {
         const previousMeetings = await query(
           `SELECT sm.session_notes, sm.homework, sm.next_session_plan, m.title, m.date
-           FROM student_meetings sm
-           JOIN meetings m ON m.id = sm.meeting_id
+           FROM student_meetings sm JOIN meetings m ON m.id = sm.meeting_id
            WHERE sm.student_id = $1 AND sm.meeting_id != $2
-           ORDER BY m.date DESC
-           LIMIT 3`,
+           ORDER BY m.date DESC LIMIT 3`,
           [studentId, meetingId]
         );
 
         const prevContext = previousMeetings
           .map((pm: Record<string, unknown>) => {
             let notes = pm.session_notes || 'N/A';
-            // Try to parse session_notes JSON for a cleaner summary
             if (typeof notes === 'string') {
-              try {
-                const parsed = JSON.parse(notes);
-                notes = parsed.sessionSummary || notes;
-              } catch {
-                // keep as-is
-              }
+              try { const p = JSON.parse(notes); notes = p.sessionSummary || notes; } catch { /* keep */ }
             }
             return `Meeting: ${pm.title} (${pm.date})\nSummary: ${notes}\nHomework: ${pm.homework || 'N/A'}`;
           })
@@ -160,33 +191,8 @@ Return as JSON only, no markdown:
         const anthropic = await getAnthropicClient();
         const response = await anthropic.messages.create({
           model: 'claude-haiku-4-5-20251001',
-          max_tokens: 3000,
-          messages: [
-            {
-              role: 'user',
-              content: `Based on the student's learning plan, previous session notes, and this latest meeting transcript, generate detailed session insights.
-
-Student: ${student.name}
-Learning Plan: ${learningPlan}
-
-Previous sessions:
-${prevContext}
-
-Latest meeting transcript:
-${transcript.substring(0, 8000)}
-
-Return as JSON only, no markdown:
-{
-  "sessionSummary": "Detailed summary of what was discussed and accomplished in this session",
-  "todos": ["actionable task 1", "actionable task 2"],
-  "recommendations": ["recommendation 1", "recommendation 2"],
-  "topicsDiscussed": ["topic 1", "topic 2"],
-  "progressNotes": "What progress was made since the last session, what improved",
-  "nextSessionPlan": "Specific plan for what to focus on next session",
-  "homework": "Homework assignment for the student"
-}`,
-            },
-          ],
+          max_tokens: 4096,
+          messages: [{ role: 'user', content: SUBSEQUENT_MEETING_PROMPT(String(student.name), learningPlan, prevContext, transcript) }],
         });
 
         const textBlock = response.content.find((b) => b.type === 'text');
@@ -195,23 +201,15 @@ Return as JSON only, no markdown:
           const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : textBlock.text);
 
           await queryOne(
-            `UPDATE student_meetings
-             SET session_notes = $1, homework = $2, next_session_plan = $3
-             WHERE student_id = $4 AND meeting_id = $5
-             RETURNING *`,
-            [
-              JSON.stringify(parsed),
-              parsed.homework || null,
-              parsed.nextSessionPlan || null,
-              studentId,
-              meetingId,
-            ]
+            `UPDATE student_meetings SET session_notes = $1, homework = $2, next_session_plan = $3
+             WHERE student_id = $4 AND meeting_id = $5 RETURNING *`,
+            [JSON.stringify(parsed), parsed.homework || null, parsed.nextSessionPlan || null, studentId, meetingId]
           );
           await log('summary', `Session insights generated for ${student.name} (meeting #${meetingCount})`);
         }
       } catch (aiErr) {
         const errMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
-        console.error('AI session insights generation failed:', errMsg);
+        console.error('AI session insights failed:', errMsg);
         await log('error', `AI session insights failed for ${student.name}: ${errMsg}`);
       }
     }

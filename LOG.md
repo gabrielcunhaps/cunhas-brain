@@ -2,6 +2,11 @@
 
 ### 2026-03-29
 - **Project**: cunhas-brain
+- **Change**: Added PDF and Markdown download buttons to StudentDetail page. Added `generateMarkdown()` function that builds a complete markdown document from all student data (profile, learning plan, session history with all insights). "Download MD" triggers a Blob download as `{name}_profile.md`. "Download PDF" opens a print-friendly HTML window with auto `window.print()`. Also added rendering for new session insight fields: `keyLearnings` (checkmark list), `bestPractices` (star list), and `buildProjects` (styled cards with instruction, learning, and reasoning). Added `strengths` and `gaps` fields to profile section.
+- **Outcome**: Students page now supports full data export and displays richer session insights.
+
+### 2026-03-29
+- **Project**: cunhas-brain
 - **Change**: Redesigned Artifacts and Knowledge Base pages from sidebar-list + detail panel layout to a Claude-inspired card gallery + detail flow. Gallery view shows a responsive card grid (3/2/1 columns) with iframe thumbnail previews for artifacts and rendered markdown previews for notes, plus search bar and tag filter pills. Clicking a card transitions to a detail view with back-to-gallery button, 60/40 split (content left, AI analysis right), and mobile-responsive stacking. All existing functionality preserved (upload modals, bulk upload, delete, fullscreen, graph tab, chat tab).
 - **Outcome**: Both pages now use a modern gallery-first layout matching the Claude artifact gallery style, with hover effects, gradient fades on card previews, and tag filtering.
 

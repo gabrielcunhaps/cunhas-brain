@@ -3,6 +3,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
+interface BuildProject {
+  project?: string;
+  description?: string;
+  instruction?: string;
+  whatTheyLearn?: string;
+  whyItMatters?: string;
+}
+
 interface SessionInsights {
   sessionSummary?: string;
   todos?: string[];
@@ -11,6 +19,9 @@ interface SessionInsights {
   progressNotes?: string;
   nextSessionPlan?: string;
   homework?: string;
+  keyLearnings?: string[];
+  bestPractices?: string[];
+  buildProjects?: BuildProject[];
 }
 
 interface Meeting {
@@ -32,7 +43,7 @@ interface StudentData {
   status: string;
   notes: string | null;
   learning_plan: { topics?: string[]; milestones?: string[]; timeline?: string } | null;
-  profile: { background?: string; goals?: string; level?: string; style?: string } | null;
+  profile: { background?: string; goals?: string; level?: string; style?: string; strengths?: string; gaps?: string } | null;
   meetings: Meeting[];
   created_at: string;
   updated_at: string;
@@ -63,6 +74,234 @@ function formatDuration(seconds: number): string {
   const mins = Math.floor((seconds % 3600) / 60);
   if (hrs > 0) return `${hrs}h ${mins}m`;
   return `${mins}m`;
+}
+
+function safeStr(val: unknown): string | null {
+  if (val === null || val === undefined) return null;
+  if (typeof val === 'string') return val.trim() || null;
+  if (typeof val === 'object') {
+    try { return JSON.stringify(val); } catch { return null; }
+  }
+  return String(val);
+}
+
+function generateMarkdown(student: StudentData, sortedMeetings: Meeting[]): string {
+  const lines: string[] = [];
+  const push = (s: string) => lines.push(s);
+  const blank = () => lines.push('');
+
+  push(`# Student Profile: ${student.name}`);
+  blank();
+  if (student.email) push(`**Email**: ${student.email}`);
+  if (student.platform) push(`**Platform**: ${student.platform}`);
+  push(`**Status**: ${student.status}`);
+  push(`**Total Sessions**: ${sortedMeetings.length}`);
+  blank();
+
+  // Profile
+  if (student.profile) {
+    push('---');
+    blank();
+    push('## Profile');
+    const p = student.profile;
+    if (p.background) push(`- **Background**: ${p.background}`);
+    if (p.goals) push(`- **Goals**: ${p.goals}`);
+    if (p.level) push(`- **Level**: ${p.level}`);
+    if (p.style) push(`- **Learning Style**: ${p.style}`);
+    if (p.strengths) push(`- **Strengths**: ${p.strengths}`);
+    if (p.gaps) push(`- **Gaps**: ${p.gaps}`);
+    blank();
+  }
+
+  // Learning Plan
+  if (student.learning_plan) {
+    push('---');
+    blank();
+    push('## Learning Plan');
+    blank();
+    const lp = student.learning_plan;
+    if (lp.topics && lp.topics.length > 0) {
+      push('### Topics');
+      lp.topics.forEach((t, i) => push(`${i + 1}. ${t}`));
+      blank();
+    }
+    if (lp.milestones && lp.milestones.length > 0) {
+      push('### Milestones');
+      lp.milestones.forEach((m, i) => push(`${i + 1}. ${m}`));
+      blank();
+    }
+    if (lp.timeline) {
+      push('### Timeline');
+      push(lp.timeline);
+      blank();
+    }
+  }
+
+  // Sessions
+  if (sortedMeetings.length > 0) {
+    push('---');
+    blank();
+    push('## Session History');
+    blank();
+
+    sortedMeetings.forEach((meeting, index) => {
+      const sessionNum = index + 1;
+      const dateStr = new Date(meeting.date).toLocaleDateString();
+      push(`### Session ${sessionNum}: ${meeting.title} — ${dateStr}`);
+      blank();
+
+      const insights = parseInsights(meeting.session_notes);
+      if (insights) {
+        if (insights.sessionSummary) {
+          push(`**Summary**: ${insights.sessionSummary}`);
+          blank();
+        }
+
+        if (insights.keyLearnings && insights.keyLearnings.length > 0) {
+          push('**Key Learnings**:');
+          insights.keyLearnings.forEach((l) => push(`- ${l}`));
+          blank();
+        }
+
+        if (insights.bestPractices && insights.bestPractices.length > 0) {
+          push('**Best Practices**:');
+          insights.bestPractices.forEach((p) => push(`- ${p}`));
+          blank();
+        }
+
+        if (insights.topicsDiscussed && insights.topicsDiscussed.length > 0) {
+          push(`**Topics Discussed**: ${insights.topicsDiscussed.join(', ')}`);
+          blank();
+        }
+
+        if (insights.buildProjects && insights.buildProjects.length > 0) {
+          push('**Build Projects**:');
+          insights.buildProjects.forEach((bp, i) => {
+            const name = safeStr(bp.project) || `Project ${i + 1}`;
+            const desc = safeStr(bp.description);
+            push(`${i + 1}. **${name}**${desc ? `: ${desc}` : ''}`);
+            if (bp.instruction) push(`   - *Instruction*: ${bp.instruction}`);
+            if (bp.whatTheyLearn) push(`   - *What you'll learn*: ${bp.whatTheyLearn}`);
+            if (bp.whyItMatters) push(`   - *Why it matters*: ${bp.whyItMatters}`);
+          });
+          blank();
+        }
+
+        if (insights.todos && insights.todos.length > 0) {
+          push('**Todos**:');
+          insights.todos.forEach((t) => push(`- [ ] ${t}`));
+          blank();
+        }
+
+        if (insights.recommendations && insights.recommendations.length > 0) {
+          push('**Recommendations**:');
+          insights.recommendations.forEach((r) => push(`- ${r}`));
+          blank();
+        }
+
+        const hw = safeStr(insights.homework) || safeStr(meeting.homework);
+        if (hw) {
+          push(`**Homework**: ${hw}`);
+          blank();
+        }
+
+        const nsp = safeStr(insights.nextSessionPlan) || safeStr(meeting.next_session_plan);
+        if (nsp) {
+          push(`**Next Session Plan**: ${nsp}`);
+          blank();
+        }
+
+        if (insights.progressNotes) {
+          push(`**Progress Notes**: ${insights.progressNotes}`);
+          blank();
+        }
+      } else {
+        if (meeting.session_notes) push(meeting.session_notes);
+        if (meeting.homework) push(`**Homework**: ${meeting.homework}`);
+        if (meeting.next_session_plan) push(`**Next Session Plan**: ${meeting.next_session_plan}`);
+        blank();
+      }
+
+      push('---');
+      blank();
+    });
+  }
+
+  return lines.join('\n');
+}
+
+function downloadMarkdown(student: StudentData, sortedMeetings: Meeting[]) {
+  const md = generateMarkdown(student, sortedMeetings);
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${student.name.replace(/\s+/g, '_')}_profile.md`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function downloadPDF(student: StudentData, sortedMeetings: Meeting[]) {
+  const md = generateMarkdown(student, sortedMeetings);
+
+  // Convert markdown to basic HTML
+  const htmlContent = md
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^---$/gm, '<hr />')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/^- \[ \] (.+)$/gm, '<li class="todo">&#9744; $1</li>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/<\/li>\n<li/g, '</li><li');
+
+  const printHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>${student.name} - Student Profile</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #1a1a1a;
+    background: #fff;
+    padding: 40px;
+    line-height: 1.6;
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 24px; margin-bottom: 12px; color: #111; }
+  h2 { font-size: 18px; margin-top: 24px; margin-bottom: 10px; color: #222; border-bottom: 1px solid #e0e0e0; padding-bottom: 4px; }
+  h3 { font-size: 15px; margin-top: 20px; margin-bottom: 8px; color: #333; }
+  p { margin-bottom: 8px; font-size: 13px; }
+  strong { font-weight: 600; }
+  em { font-style: italic; color: #555; }
+  li { margin-left: 20px; margin-bottom: 4px; font-size: 13px; }
+  li.todo { list-style: none; margin-left: 0; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 16px 0; }
+  @media print {
+    body { padding: 20px; }
+    @page { margin: 1.5cm; }
+  }
+</style>
+</head>
+<body>
+<p>${htmlContent}</p>
+<script>window.onload = function() { window.print(); }</script>
+</body>
+</html>`;
+
+  const printWindow = window.open('', '_blank');
+  if (printWindow) {
+    printWindow.document.write(printHtml);
+    printWindow.document.close();
+  }
 }
 
 // Collapsible section component
@@ -337,7 +576,25 @@ export default function StudentDetail({ studentId }: { studentId: string }) {
           </div>
 
           {/* Action buttons */}
-          <div className="flex gap-2 shrink-0">
+          <div className="flex gap-2 shrink-0 flex-wrap">
+            <button
+              onClick={() => downloadMarkdown(student, sortedMeetings)}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--surface-2)] text-[var(--text-secondary)] hover:bg-[var(--surface-3)] border border-[var(--border)] transition-colors flex items-center gap-1.5"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Download MD
+            </button>
+            <button
+              onClick={() => downloadPDF(student, sortedMeetings)}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--surface-2)] text-[var(--text-secondary)] hover:bg-[var(--surface-3)] border border-[var(--border)] transition-colors flex items-center gap-1.5"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Download PDF
+            </button>
             <button
               onClick={() => setEditing(!editing)}
               className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--surface-2)] text-[var(--text-secondary)] hover:bg-[var(--surface-3)] border border-[var(--border)] transition-colors"
@@ -445,6 +702,18 @@ export default function StudentDetail({ studentId }: { studentId: string }) {
               <div>
                 <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase">Learning Style</span>
                 <p className="text-sm text-[var(--text-primary)] mt-0.5">{student.profile.style}</p>
+              </div>
+            )}
+            {student.profile.strengths && (
+              <div>
+                <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase">Strengths</span>
+                <p className="text-sm text-[var(--text-primary)] mt-0.5">{student.profile.strengths}</p>
+              </div>
+            )}
+            {student.profile.gaps && (
+              <div>
+                <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase">Gaps</span>
+                <p className="text-sm text-[var(--text-primary)] mt-0.5">{student.profile.gaps}</p>
               </div>
             )}
           </div>
@@ -735,6 +1004,98 @@ export default function StudentDetail({ studentId }: { studentId: string }) {
                                       >
                                         {topic}
                                       </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Key Learnings */}
+                              {insights.keyLearnings && insights.keyLearnings.length > 0 && (
+                                <div>
+                                  <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                                    Key Learnings
+                                  </span>
+                                  <ul className="mt-1.5 space-y-1">
+                                    {insights.keyLearnings.map((learning, i) => (
+                                      <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-primary)]">
+                                        <span className="text-[var(--success)] mt-0.5 shrink-0">&#10003;</span>
+                                        {learning}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {/* Best Practices */}
+                              {insights.bestPractices && insights.bestPractices.length > 0 && (
+                                <div>
+                                  <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                                    Best Practices
+                                  </span>
+                                  <ul className="mt-1.5 space-y-1">
+                                    {insights.bestPractices.map((practice, i) => (
+                                      <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-secondary)]">
+                                        <span className="text-[var(--accent)] mt-0.5 shrink-0">&#9733;</span>
+                                        {practice}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {/* Build Projects */}
+                              {insights.buildProjects && insights.buildProjects.length > 0 && (
+                                <div>
+                                  <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                                    Build Projects
+                                  </span>
+                                  <div className="mt-2 space-y-2">
+                                    {insights.buildProjects.map((bp, i) => (
+                                      <div
+                                        key={i}
+                                        className="px-3 py-2.5 rounded-lg border"
+                                        style={{
+                                          backgroundColor: 'var(--surface-2)',
+                                          borderColor: 'color-mix(in srgb, var(--accent) 20%, var(--border))',
+                                        }}
+                                      >
+                                        <div className="flex items-start gap-2">
+                                          <span
+                                            className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 mt-0.5"
+                                            style={{
+                                              color: 'var(--accent)',
+                                              backgroundColor: 'color-mix(in srgb, var(--accent) 15%, transparent)',
+                                            }}
+                                          >
+                                            {i + 1}
+                                          </span>
+                                          <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-[var(--text-primary)]">
+                                              {safeStr(bp.project) || `Project ${i + 1}`}
+                                            </p>
+                                            {bp.description && (
+                                              <p className="text-xs text-[var(--text-secondary)] mt-0.5">{bp.description}</p>
+                                            )}
+                                            {bp.instruction && (
+                                              <p className="text-xs mt-1.5" style={{ color: 'var(--accent)' }}>
+                                                <span className="font-semibold">Instruction:</span> {bp.instruction}
+                                              </p>
+                                            )}
+                                            <div className="flex flex-col sm:flex-row gap-2 mt-1.5">
+                                              {bp.whatTheyLearn && (
+                                                <p className="text-xs text-[var(--text-muted)] flex-1">
+                                                  <span className="font-semibold">Learn:</span> {bp.whatTheyLearn}
+                                                </p>
+                                              )}
+                                              {bp.whyItMatters && (
+                                                <p className="text-xs text-[var(--text-muted)] flex-1">
+                                                  <span className="font-semibold">Why:</span> {bp.whyItMatters}
+                                                </p>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
                                     ))}
                                   </div>
                                 </div>
