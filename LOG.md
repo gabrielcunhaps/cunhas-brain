@@ -2,6 +2,11 @@
 
 ### 2026-03-29
 - **Project**: cunhas-brain
+- **Change**: Fixed KnowledgeBase component -- two critical issues. (1) Markdown rendering: replaced inline wikilink badge injection (which broke ReactMarkdown into fragments) with pre-processing that converts `[[keyword]]` to bold text and shows wikilinks as a separate clickable badges section below content; wrapped rendered markdown in a styled document container with proper prose typography (headings, paragraphs, lists, code blocks, blockquotes). (2) Knowledge graph: fixed "No notes yet" overlay showing despite nodes existing (was checking ref which doesn't trigger re-render, switched to state); fixed invisible nodes/labels by replacing CSS `var()` usage in canvas context with actual color values; added node coloring by connection count, white node borders, dark pill backgrounds behind labels, glow effect on hover, and subtle dot grid background.
+- **Outcome**: Note preview renders clean formatted markdown with wikilinks as a separate section. Knowledge graph shows colorful visible nodes with readable labels and no false "empty" overlay.
+
+### 2026-03-29
+- **Project**: cunhas-brain
 - **Change**: Added bulk file upload to KnowledgeBase and ArtifactsView upload modals. Both now have a "Paste" / "Upload Files" toggle. Upload Files mode supports selecting multiple files or an entire folder (webkitdirectory). Selected files are listed with checkboxes, file sizes, and client-side duplicate detection against existing titles. Duplicates are flagged with a warning badge and unchecked by default. Sequential upload with progress bar. Errors on individual files are caught and displayed without stopping the batch.
 - **Outcome**: Both Knowledge Base and Artifacts support bulk file upload with duplicate detection, progress tracking, and error handling.
 

@@ -281,37 +281,23 @@ function NotesTab({
 // ─── Note Detail ─────────────────────────────────────────────────────────────
 
 function NoteDetail({ note, onDelete, onWikilinkClick }: { note: Note; onDelete: (id: number) => void; onWikilinkClick: (keyword: string) => void }) {
-  // Custom renderer: intercept wikilinks in the markdown
-  function renderContent(content: string) {
-    // Split content by wikilinks
-    const parts = content.split(/(\[\[[^\]]+\]\])/g);
-    return parts.map((part, i) => {
-      const match = part.match(/^\[\[([^\]]+)\]\]$/);
-      if (match) {
-        return (
-          <span
-            key={i}
-            onClick={() => onWikilinkClick(match[1])}
-            style={{
-              display: 'inline-block',
-              padding: '1px 8px',
-              borderRadius: 4,
-              background: 'var(--surface-3)',
-              color: 'var(--accent)',
-              cursor: 'pointer',
-              fontSize: '0.9em',
-              fontWeight: 500,
-              margin: '0 2px',
-              border: '1px solid var(--border)',
-            }}
-          >
-            {match[1]}
-          </span>
-        );
-      }
-      return <ReactMarkdown key={i}>{part}</ReactMarkdown>;
+  // Pre-process: replace [[keyword]] with **keyword** for markdown, collect wikilinks
+  function processContent(content: string): { markdown: string; wikilinks: string[] } {
+    const wikilinks: string[] = [];
+    const markdown = content.replace(/\[\[([^\]]+)\]\]/g, (_match, keyword) => {
+      if (!wikilinks.includes(keyword)) wikilinks.push(keyword);
+      return `**${keyword}**`;
     });
+    return { markdown, wikilinks };
   }
+
+  const processed = note.content ? processContent(note.content) : null;
+
+  const proseStyles: React.CSSProperties = {
+    color: '#e4e4e7',
+    lineHeight: 1.7,
+    fontSize: 15,
+  };
 
   return (
     <div>
@@ -363,9 +349,68 @@ function NoteDetail({ note, onDelete, onWikilinkClick }: { note: Note; onDelete:
         </div>
       )}
 
-      {/* Content */}
-      <div className="prose prose-invert" style={{ color: 'var(--text-primary)', lineHeight: 1.7, fontSize: 15 }}>
-        {note.content ? renderContent(note.content) : <p style={{ color: 'var(--text-muted)' }}>No content</p>}
+      {/* Content — document-style container */}
+      <div style={{
+        background: '#1a1a1f',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: 12,
+        padding: 32,
+        maxWidth: 720,
+      }}>
+        <style>{`
+          .kb-prose h1 { font-size: 1.5em; font-weight: 700; margin: 0 0 0.5em; color: #e4e4e7; }
+          .kb-prose h2 { font-size: 1.25em; font-weight: 700; margin: 1.2em 0 0.5em; color: #e4e4e7; }
+          .kb-prose h3 { font-size: 1.1em; font-weight: 600; margin: 1em 0 0.4em; color: #e4e4e7; }
+          .kb-prose p { margin: 0 0 1em; line-height: 1.7; color: #d1d1d6; }
+          .kb-prose ul, .kb-prose ol { margin: 0 0 1em; padding-left: 1.5em; color: #d1d1d6; }
+          .kb-prose li { margin-bottom: 0.25em; line-height: 1.6; }
+          .kb-prose blockquote { border-left: 3px solid #6366f1; padding-left: 1em; margin: 0 0 1em; color: #a1a1aa; }
+          .kb-prose code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; color: #c4b5fd; }
+          .kb-prose pre { background: rgba(255,255,255,0.06); padding: 16px; border-radius: 8px; overflow-x: auto; margin: 0 0 1em; }
+          .kb-prose pre code { background: none; padding: 0; font-size: 0.85em; color: #d1d1d6; }
+          .kb-prose hr { border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 1.5em 0; }
+          .kb-prose strong { color: #e4e4e7; font-weight: 600; }
+          .kb-prose a { color: #6366f1; text-decoration: underline; }
+          .kb-prose img { max-width: 100%; border-radius: 8px; }
+        `}</style>
+        <div className="kb-prose" style={proseStyles}>
+          {processed ? (
+            <ReactMarkdown>{processed.markdown}</ReactMarkdown>
+          ) : (
+            <p style={{ color: 'var(--text-muted)' }}>No content</p>
+          )}
+        </div>
+
+        {/* Wikilinks as badges below content */}
+        {processed && processed.wikilinks.length > 0 && (
+          <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#a1a1aa', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Linked Topics
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {processed.wikilinks.map((kw) => (
+                <span
+                  key={kw}
+                  onClick={() => onWikilinkClick(kw)}
+                  style={{
+                    display: 'inline-block',
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                    background: 'rgba(99,102,241,0.15)',
+                    color: '#818cf8',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    fontWeight: 500,
+                    border: '1px solid rgba(99,102,241,0.25)',
+                    transition: 'background 0.15s',
+                  }}
+                >
+                  {kw}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -746,6 +791,8 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
   const nodesRef = useRef<GraphNode[]>([]);
   const edgesRef = useRef<{ source: number; target: number; keyword: string }[]>([]);
   const [hovered, setHovered] = useState<GraphNode | null>(null);
+  const [graphLoaded, setGraphLoaded] = useState(false);
+  const [nodeCount, setNodeCount] = useState(0);
   const offsetRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
   const dragRef = useRef<{ dragging: boolean; lastX: number; lastY: number }>({ dragging: false, lastX: 0, lastY: 0 });
@@ -790,6 +837,8 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
           connections: connCount[n.id] || 0,
         }));
         edgesRef.current = data.edges;
+        setNodeCount(data.nodes.length);
+        setGraphLoaded(true);
 
         // Center offset
         offsetRef.current = { x: 0, y: 0 };
@@ -871,6 +920,17 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
       if (!ctx) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+      // Draw subtle dot grid background
+      ctx.fillStyle = 'rgba(255,255,255,0.03)';
+      const gridSize = 30;
+      for (let gx = 0; gx < canvas.width; gx += gridSize) {
+        for (let gy = 0; gy < canvas.height; gy += gridSize) {
+          ctx.beginPath();
+          ctx.arc(gx, gy, 1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
       const off = offsetRef.current;
       const z = zoomRef.current;
 
@@ -878,16 +938,22 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
       ctx.translate(off.x, off.y);
       ctx.scale(z, z);
 
+      // Color palette for nodes by connection count
+      function getNodeColor(connections: number): string {
+        if (connections >= 5) return '#6366f1'; // indigo — hub nodes
+        if (connections >= 3) return '#8b5cf6'; // purple
+        if (connections >= 1) return '#06b6d4'; // cyan
+        return '#64748b'; // slate — isolated
+      }
+
       // Edges
-      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-      ctx.lineWidth = 1;
       for (const e of edges) {
         const s = nodeMap[e.source];
         const t = nodeMap[e.target];
         if (!s || !t) continue;
         const isHL = hovered && (hovered.id === s.id || hovered.id === t.id);
-        ctx.strokeStyle = isHL ? 'var(--accent, #6366f1)' : 'rgba(255,255,255,0.15)';
-        ctx.lineWidth = isHL ? 2 : 1;
+        ctx.strokeStyle = isHL ? '#818cf8' : 'rgba(255,255,255,0.2)';
+        ctx.lineWidth = isHL ? 2.5 : 1;
         ctx.beginPath();
         ctx.moveTo(s.x, s.y);
         ctx.lineTo(t.x, t.y);
@@ -898,16 +964,53 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
       for (const n of nodes) {
         const r = Math.max(8, 4 + n.connections * 3);
         const isHL = hovered?.id === n.id;
+        const color = getNodeColor(n.connections);
+
+        // Glow effect on hover
+        if (isHL) {
+          ctx.save();
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 20;
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, r + 2, 0, Math.PI * 2);
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // Node circle
         ctx.beginPath();
         ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-        ctx.fillStyle = isHL ? 'var(--accent-hover, #818cf8)' : 'var(--accent, #6366f1)';
+        ctx.fillStyle = isHL ? '#a5b4fc' : color;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = isHL ? 2 : 1;
+        ctx.stroke();
+
+        // Label with dark background for readability
+        const label = n.title.length > 20 ? n.title.slice(0, 18) + '...' : n.title;
+        const fontSize = isHL ? 13 : 11;
+        ctx.font = `${fontSize}px sans-serif`;
+        ctx.textAlign = 'center';
+        const textWidth = ctx.measureText(label).width;
+        const labelY = n.y - r - 8;
+
+        // Background pill behind text
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        const padX = 4, padY = 2;
+        ctx.beginPath();
+        ctx.roundRect(
+          n.x - textWidth / 2 - padX,
+          labelY - fontSize / 2 - padY - 1,
+          textWidth + padX * 2,
+          fontSize + padY * 2,
+          3
+        );
         ctx.fill();
 
-        // Label
-        ctx.font = `${isHL ? 13 : 11}px sans-serif`;
-        ctx.fillStyle = isHL ? 'var(--text-primary, #fff)' : 'var(--text-secondary, #aaa)';
-        ctx.textAlign = 'center';
-        ctx.fillText(n.title.length > 20 ? n.title.slice(0, 18) + '...' : n.title, n.x, n.y - r - 6);
+        // Text
+        ctx.fillStyle = isHL ? '#ffffff' : '#e4e4e7';
+        ctx.fillText(label, n.x, labelY + fontSize / 2 - 2);
       }
 
       ctx.restore();
@@ -990,7 +1093,7 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
           <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>{hovered.connections} connections</span>
         </div>
       )}
-      {nodesRef.current.length === 0 && (
+      {graphLoaded && nodeCount === 0 && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
           No notes yet. Upload notes to see the knowledge graph.
         </div>
