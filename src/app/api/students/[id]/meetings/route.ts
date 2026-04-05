@@ -181,7 +181,7 @@ export async function POST(
     });
     const transcript = transcriptParts.join('\n\n').substring(0, 16000);
 
-    await log('summary', `Attaching meeting ${meetingId} to student ${studentId} (meeting #${meetingCount})`, { transcript: transcript.length });
+    await log('summary', `Attaching ${meetingIds.length} meeting(s) to student ${studentId} (session #${meetingCount})`, { transcript: transcript.length });
 
     if (meetingCount === 1 && transcript) {
       try {
@@ -253,9 +253,9 @@ export async function POST(
           await queryOne(
             `UPDATE student_meetings SET session_notes = $1, homework = $2, next_session_plan = $3
              WHERE student_id = $4 AND meeting_id = $5 RETURNING *`,
-            [JSON.stringify(parsed), parsed.homework || null, parsed.nextSessionPlan || null, studentId, meetingId]
+            [JSON.stringify(parsed), parsed.homework || null, parsed.nextSessionPlan || null, studentId, primaryMeetingId]
           );
-          await log('summary', `Session insights generated for ${student.name} (meeting #${meetingCount})`);
+          await log('summary', `Session insights generated for ${student.name} (session #${meetingCount})`);
         }
       } catch (aiErr) {
         const errMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
