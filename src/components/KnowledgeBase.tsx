@@ -143,6 +143,7 @@ export default function KnowledgeBase() {
       {showUpload && (
         <UploadModal
           loading={loading}
+          existingTitles={notes.map((n) => n.title)}
           onClose={() => setShowUpload(false)}
           onUpload={async (title, content, tags) => {
             setLoading(true);
@@ -158,6 +159,24 @@ export default function KnowledgeBase() {
               }
             } catch (err) {
               console.error('Upload failed:', err);
+            } finally {
+              setLoading(false);
+            }
+          }}
+          onBulkUpload={async (items) => {
+            setLoading(true);
+            try {
+              for (const item of items) {
+                await fetch('/api/notes', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ title: item.title, content: item.content, tags: item.tags }),
+                });
+              }
+              setShowUpload(false);
+              fetchNotes();
+            } catch (err) {
+              console.error('Bulk upload failed:', err);
             } finally {
               setLoading(false);
             }
@@ -354,79 +373,356 @@ function NoteDetail({ note, onDelete, onWikilinkClick }: { note: Note; onDelete:
 
 // ─── Upload Modal ────────────────────────────────────────────────────────────
 
-function UploadModal({ loading, onClose, onUpload }: {
+interface BulkFileEntry {
+  name: string;
+  title: string;
+  content: string;
+  checked: boolean;
+  isDuplicate: boolean;
+}
+
+function UploadModal({ loading, existingTitles, onClose, onUpload, onBulkUpload }: {
   loading: boolean;
+  existingTitles: string[];
   onClose: () => void;
   onUpload: (title: string, content: string, tags: string[]) => void;
+  onBulkUpload: (items: { title: string; content: string; tags: string[] }[]) => void;
 }) {
+  const [mode, setMode] = useState<'paste' | 'upload'>('paste');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [tagsStr, setTagsStr] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  // Bulk upload state
+  const [bulkFiles, setBulkFiles] = useState<BulkFileEntry[]>([]);
+  const [bulkTags, setBulkTags] = useState('');
+  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null);
+  const [bulkErrors, setBulkErrors] = useState<string[]>([]);
+  const bulkFilesInputRef = useRef<HTMLInputElement>(null);
+  const bulkFolderInputRef = useRef<HTMLInputElement>(null);
+
+  function handleSingleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
       setContent(text);
-      if (!title) setTitle(file.name.replace(/\.md$/, ''));
+      if (!title) setTitle(file.name.replace(/\.(md|txt|markdown)$/, ''));
     };
     reader.readAsText(file);
   }
 
+  function handleBulkFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const validFiles = Array.from(files).filter((f) =>
+      /\.(md|txt|markdown)$/i.test(f.name)
+    );
+
+    const existingLower = existingTitles.map((t) => t.toLowerCase());
+    const readPromises = validFiles.map(
+      (file) =>
+        new Promise<BulkFileEntry>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const text = ev.target?.result as string;
+            const fileTitle = file.name.replace(/\.(md|txt|markdown)$/i, '');
+            const isDuplicate = existingLower.includes(fileTitle.toLowerCase());
+            resolve({
+              name: file.name,
+              title: fileTitle,
+              content: text,
+              checked: !isDuplicate,
+              isDuplicate,
+            });
+          };
+          reader.readAsText(file);
+        })
+    );
+
+    Promise.all(readPromises).then((entries) => {
+      setBulkFiles(entries);
+    });
+
+    // Reset the input so the same files can be re-selected
+    e.target.value = '';
+  }
+
+  function toggleBulkFile(index: number) {
+    setBulkFiles((prev) =>
+      prev.map((f, i) => (i === index ? { ...f, checked: !f.checked } : f))
+    );
+  }
+
+  async function handleBulkUpload() {
+    const toUpload = bulkFiles.filter((f) => f.checked && !f.isDuplicate);
+    if (toUpload.length === 0) return;
+
+    const tags = bulkTags.split(',').map((t) => t.trim()).filter(Boolean);
+    const errors: string[] = [];
+
+    setBulkProgress({ current: 0, total: toUpload.length });
+
+    for (let i = 0; i < toUpload.length; i++) {
+      setBulkProgress({ current: i + 1, total: toUpload.length });
+      try {
+        const res = await fetch('/api/notes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: toUpload[i].title,
+            content: toUpload[i].content,
+            tags,
+          }),
+        });
+        if (!res.ok) {
+          errors.push(`Failed: ${toUpload[i].title}`);
+        }
+      } catch {
+        errors.push(`Error: ${toUpload[i].title}`);
+      }
+    }
+
+    setBulkErrors(errors);
+    if (errors.length === 0) {
+      onBulkUpload([]); // Signal completion (uploads already done)
+    } else {
+      setBulkProgress(null);
+    }
+  }
+
+  const newCount = bulkFiles.filter((f) => f.checked && !f.isDuplicate).length;
+  const dupeCount = bulkFiles.filter((f) => f.isDuplicate).length;
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-      <div style={{ background: 'var(--surface-1)', borderRadius: 12, padding: 24, width: 560, maxHeight: '80vh', overflow: 'auto', border: '1px solid var(--border)' }}>
-        <h3 style={{ margin: '0 0 16px', color: 'var(--text-primary)' }}>Upload Note</h3>
+      <div style={{ background: 'var(--surface-1)', borderRadius: 12, padding: 24, width: 600, maxHeight: '85vh', overflow: 'auto', border: '1px solid var(--border)' }}>
+        <h3 style={{ margin: '0 0 16px', color: 'var(--text-primary)' }}>Upload Notes</h3>
 
-        <label style={labelStyle}>Title</label>
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Note title"
-          style={{ ...inputStyle, marginBottom: 12 }}
-        />
-
-        <label style={labelStyle}>Content (Markdown)</label>
-        <textarea
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="Paste markdown content here..."
-          rows={12}
-          style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace', marginBottom: 8 }}
-        />
-        <div style={{ marginBottom: 12 }}>
-          <input ref={fileInputRef} type="file" accept=".md,.txt,.markdown" onChange={handleFileUpload} style={{ display: 'none' }} />
-          <button onClick={() => fileInputRef.current?.click()} style={{ ...btnSmallStyle, fontSize: 12 }}>
-            Or upload .md file
-          </button>
-        </div>
-
-        <label style={labelStyle}>Tags (comma-separated)</label>
-        <input
-          type="text"
-          value={tagsStr}
-          onChange={(e) => setTagsStr(e.target.value)}
-          placeholder="e.g. AI, productivity, notes"
-          style={{ ...inputStyle, marginBottom: 16 }}
-        />
-
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={btnSmallStyle} disabled={loading}>Cancel</button>
+        {/* Mode toggle */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           <button
-            onClick={() => {
-              const tags = tagsStr.split(',').map((t) => t.trim()).filter(Boolean);
-              onUpload(title, content, tags);
+            onClick={() => setMode('paste')}
+            style={{
+              padding: '6px 14px',
+              fontSize: 13,
+              background: mode === 'paste' ? 'var(--accent)' : 'var(--surface-2)',
+              color: mode === 'paste' ? '#fff' : 'var(--text-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              cursor: 'pointer',
             }}
-            disabled={!title || !content || loading}
-            style={btnStyle}
           >
-            {loading ? 'Analyzing and building connections...' : 'Upload & Process'}
+            Paste
+          </button>
+          <button
+            onClick={() => setMode('upload')}
+            style={{
+              padding: '6px 14px',
+              fontSize: 13,
+              background: mode === 'upload' ? 'var(--accent)' : 'var(--surface-2)',
+              color: mode === 'upload' ? '#fff' : 'var(--text-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              cursor: 'pointer',
+            }}
+          >
+            Upload Files
           </button>
         </div>
+
+        {mode === 'paste' ? (
+          <>
+            <label style={labelStyle}>Title</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Note title"
+              style={{ ...inputStyle, marginBottom: 12 }}
+            />
+
+            <label style={labelStyle}>Content (Markdown)</label>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Paste markdown content here..."
+              rows={12}
+              style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace', marginBottom: 8 }}
+            />
+            <div style={{ marginBottom: 12 }}>
+              <input ref={fileInputRef} type="file" accept=".md,.txt,.markdown" onChange={handleSingleFileUpload} style={{ display: 'none' }} />
+              <button onClick={() => fileInputRef.current?.click()} style={{ ...btnSmallStyle, fontSize: 12 }}>
+                Or upload .md file
+              </button>
+            </div>
+
+            <label style={labelStyle}>Tags (comma-separated)</label>
+            <input
+              type="text"
+              value={tagsStr}
+              onChange={(e) => setTagsStr(e.target.value)}
+              placeholder="e.g. AI, productivity, notes"
+              style={{ ...inputStyle, marginBottom: 16 }}
+            />
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={onClose} style={btnSmallStyle} disabled={loading}>Cancel</button>
+              <button
+                onClick={() => {
+                  const tags = tagsStr.split(',').map((t) => t.trim()).filter(Boolean);
+                  onUpload(title, content, tags);
+                }}
+                disabled={!title || !content || loading}
+                style={btnStyle}
+              >
+                {loading ? 'Analyzing and building connections...' : 'Upload & Process'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Bulk file upload controls */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <input
+                ref={bulkFilesInputRef}
+                type="file"
+                accept=".md,.txt,.markdown"
+                multiple
+                onChange={handleBulkFileSelect}
+                style={{ display: 'none' }}
+              />
+              <input
+                ref={bulkFolderInputRef}
+                type="file"
+                accept=".md,.txt,.markdown"
+                /* @ts-expect-error webkitdirectory is a non-standard attribute */
+                webkitdirectory=""
+                onChange={handleBulkFileSelect}
+                style={{ display: 'none' }}
+              />
+              <button onClick={() => bulkFilesInputRef.current?.click()} style={btnSmallStyle}>
+                Select Files
+              </button>
+              <button onClick={() => bulkFolderInputRef.current?.click()} style={btnSmallStyle}>
+                Select Folder
+              </button>
+            </div>
+
+            {bulkFiles.length > 0 && (
+              <>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                  {bulkFiles.length} file{bulkFiles.length !== 1 ? 's' : ''} selected
+                  {dupeCount > 0 && (
+                    <span style={{ color: 'var(--warning, #f59e0b)', marginLeft: 8 }}>
+                      ({newCount} new, {dupeCount} duplicate{dupeCount !== 1 ? 's' : ''} skipped)
+                    </span>
+                  )}
+                </div>
+
+                <div style={{
+                  maxHeight: 240,
+                  overflowY: 'auto',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  marginBottom: 12,
+                }}>
+                  {bulkFiles.map((file, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '8px 12px',
+                        borderBottom: i < bulkFiles.length - 1 ? '1px solid var(--border)' : 'none',
+                        background: file.isDuplicate ? 'var(--surface-2)' : 'transparent',
+                        opacity: file.isDuplicate ? 0.6 : 1,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={file.checked}
+                        disabled={file.isDuplicate}
+                        onChange={() => toggleBulkFile(i)}
+                        style={{ cursor: file.isDuplicate ? 'not-allowed' : 'pointer' }}
+                      />
+                      <span style={{ flex: 1, fontSize: 13, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {file.title}
+                      </span>
+                      {file.isDuplicate && (
+                        <span style={{
+                          fontSize: 11,
+                          padding: '2px 6px',
+                          borderRadius: 4,
+                          background: 'var(--warning, #f59e0b)',
+                          color: '#000',
+                          fontWeight: 600,
+                          whiteSpace: 'nowrap',
+                        }}>
+                          Duplicate
+                        </span>
+                      )}
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                        {(file.content.length / 1024).toFixed(1)}KB
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <label style={labelStyle}>Tags for all files (comma-separated)</label>
+            <input
+              type="text"
+              value={bulkTags}
+              onChange={(e) => setBulkTags(e.target.value)}
+              placeholder="e.g. AI, productivity, notes"
+              style={{ ...inputStyle, marginBottom: 16 }}
+            />
+
+            {bulkProgress && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 13, color: 'var(--accent)', marginBottom: 4 }}>
+                  Uploading {bulkProgress.current}/{bulkProgress.total}...
+                </div>
+                <div style={{ height: 4, background: 'var(--surface-3)', borderRadius: 2 }}>
+                  <div style={{
+                    height: '100%',
+                    background: 'var(--accent)',
+                    borderRadius: 2,
+                    width: `${(bulkProgress.current / bulkProgress.total) * 100}%`,
+                    transition: 'width 0.3s',
+                  }} />
+                </div>
+              </div>
+            )}
+
+            {bulkErrors.length > 0 && (
+              <div style={{ marginBottom: 12, padding: 8, background: 'var(--surface-2)', borderRadius: 6, border: '1px solid var(--danger)' }}>
+                {bulkErrors.map((err, i) => (
+                  <div key={i} style={{ fontSize: 12, color: 'var(--danger)', marginBottom: 2 }}>{err}</div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={onClose} style={btnSmallStyle} disabled={loading || !!bulkProgress}>Cancel</button>
+              <button
+                onClick={handleBulkUpload}
+                disabled={newCount === 0 || loading || !!bulkProgress}
+                style={btnStyle}
+              >
+                {bulkProgress
+                  ? `Uploading ${bulkProgress.current}/${bulkProgress.total}...`
+                  : `Upload & Process All (${newCount})`}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

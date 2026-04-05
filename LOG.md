@@ -2,6 +2,11 @@
 
 ### 2026-03-29
 - **Project**: cunhas-brain
+- **Change**: Added bulk file upload to KnowledgeBase and ArtifactsView upload modals. Both now have a "Paste" / "Upload Files" toggle. Upload Files mode supports selecting multiple files or an entire folder (webkitdirectory). Selected files are listed with checkboxes, file sizes, and client-side duplicate detection against existing titles. Duplicates are flagged with a warning badge and unchecked by default. Sequential upload with progress bar. Errors on individual files are caught and displayed without stopping the batch.
+- **Outcome**: Both Knowledge Base and Artifacts support bulk file upload with duplicate detection, progress tracking, and error handling.
+
+### 2026-03-29
+- **Project**: cunhas-brain
 - **Change**: Built Knowledge Base / Notes feature. Created 4 API routes: `src/app/api/notes/route.ts` (GET list, POST with AI analysis via Claude -- generates summary, key topics, auto-inserts wikilinks, builds knowledge_edges), `src/app/api/notes/[id]/route.ts` (GET with connected notes, PUT with AI re-processing and edge rebuild, DELETE with edge cleanup), `src/app/api/notes/graph/route.ts` (full knowledge graph nodes + edges), `src/app/api/notes/chat/route.ts` (streaming chat with all notes as context). Created `KnowledgeBase.tsx` component with 3 tabs: Notes List (two-panel with search, note cards, markdown rendering with clickable wikilink badges, upload modal with .md file support), Knowledge Graph (force-directed canvas graph with zoom/pan/hover/click, no external dependencies), Chat (streaming AI chat against the knowledge base). Added `/knowledge` page and Knowledge nav link.
 - **Outcome**: Fully functional Obsidian-style knowledge base with AI-powered note analysis, automatic wikilink detection and cross-linking, visual knowledge graph, and conversational AI interface over the note corpus.
 

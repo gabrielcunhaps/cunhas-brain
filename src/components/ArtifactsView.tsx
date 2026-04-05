@@ -84,7 +84,16 @@ export default function ArtifactsView() {
   const [uploadCode, setUploadCode] = useState('');
   const [uploadTags, setUploadTags] = useState('');
   const [uploadMode, setUploadMode] = useState<'paste' | 'file'>('paste');
+  const [uploadTab, setUploadTab] = useState<'paste' | 'bulk'>('paste');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Bulk upload state
+  const [bulkFiles, setBulkFiles] = useState<{ name: string; title: string; content: string; checked: boolean; isDuplicate: boolean }[]>([]);
+  const [bulkTags, setBulkTags] = useState('');
+  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null);
+  const [bulkErrors, setBulkErrors] = useState<string[]>([]);
+  const bulkFilesInputRef = useRef<HTMLInputElement>(null);
+  const bulkFolderInputRef = useRef<HTMLInputElement>(null);
 
   const fetchArtifacts = useCallback(async () => {
     try {
@@ -176,6 +185,99 @@ export default function ArtifactsView() {
       setUploading(false);
     }
   };
+
+  const handleBulkFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const validFiles = Array.from(files).filter((f) =>
+      /\.(html?|jsx|tsx)$/i.test(f.name)
+    );
+
+    const existingLower = artifacts.map((a) => a.title.toLowerCase());
+    const readPromises = validFiles.map(
+      (file) =>
+        new Promise<{ name: string; title: string; content: string; checked: boolean; isDuplicate: boolean }>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const text = reader.result as string;
+            const fileTitle = file.name.replace(/\.[^.]+$/, '');
+            const isDuplicate = existingLower.includes(fileTitle.toLowerCase());
+            resolve({
+              name: file.name,
+              title: fileTitle,
+              content: text,
+              checked: !isDuplicate,
+              isDuplicate,
+            });
+          };
+          reader.readAsText(file);
+        })
+    );
+
+    Promise.all(readPromises).then((entries) => {
+      setBulkFiles(entries);
+    });
+
+    e.target.value = '';
+  };
+
+  const toggleBulkFile = (index: number) => {
+    setBulkFiles((prev) =>
+      prev.map((f, i) => (i === index ? { ...f, checked: !f.checked } : f))
+    );
+  };
+
+  const handleBulkUpload = async () => {
+    const toUpload = bulkFiles.filter((f) => f.checked && !f.isDuplicate);
+    if (toUpload.length === 0) return;
+
+    const tags = bulkTags.split(',').map((t) => t.trim()).filter(Boolean);
+    const errors: string[] = [];
+    setUploading(true);
+    setBulkProgress({ current: 0, total: toUpload.length });
+
+    for (let i = 0; i < toUpload.length; i++) {
+      setBulkProgress({ current: i + 1, total: toUpload.length });
+      const code = toUpload[i].content;
+      const fileType = code.trim().startsWith('<!') || code.trim().startsWith('<html')
+        ? 'html'
+        : code.includes('import React') || code.includes('export default') || code.includes('function App')
+          ? 'jsx'
+          : 'html';
+      try {
+        const res = await fetch('/api/artifacts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: toUpload[i].title,
+            fileContent: code,
+            fileType,
+            tags,
+          }),
+        });
+        if (!res.ok) {
+          errors.push(`Failed: ${toUpload[i].title}`);
+        }
+      } catch {
+        errors.push(`Error: ${toUpload[i].title}`);
+      }
+    }
+
+    setBulkErrors(errors);
+    setBulkProgress(null);
+    setUploading(false);
+
+    if (errors.length === 0) {
+      setBulkFiles([]);
+      setBulkTags('');
+      setShowUpload(false);
+      await fetchArtifacts();
+    }
+  };
+
+  const bulkNewCount = bulkFiles.filter((f) => f.checked && !f.isDuplicate).length;
+  const bulkDupeCount = bulkFiles.filter((f) => f.isDuplicate).length;
 
   const filtered = artifacts.filter((a) =>
     a.title.toLowerCase().includes(search.toLowerCase())
@@ -594,175 +696,409 @@ export default function ArtifactsView() {
               overflowY: 'auto',
             }}
           >
-            <h2 style={{ margin: '0 0 20px', fontSize: '18px', color: 'var(--text-primary)' }}>
+            <h2 style={{ margin: '0 0 16px', fontSize: '18px', color: 'var(--text-primary)' }}>
               Upload Artifact
             </h2>
 
-            <label style={{ display: 'block', marginBottom: '12px' }}>
-              <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                Title *
-              </span>
-              <input
-                type="text"
-                value={uploadTitle}
-                onChange={(e) => setUploadTitle(e.target.value)}
-                placeholder="My Cool Component"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: 'var(--surface-2)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '6px',
-                  color: 'var(--text-primary)',
-                  fontSize: '14px',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </label>
-
-            {/* Mode Toggle */}
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+            {/* Top-level tab: Paste vs Upload Files */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
               <button
-                onClick={() => setUploadMode('paste')}
+                onClick={() => setUploadTab('paste')}
                 style={{
                   padding: '6px 14px',
                   fontSize: '13px',
-                  background: uploadMode === 'paste' ? 'var(--accent)' : 'var(--surface-2)',
-                  color: uploadMode === 'paste' ? '#fff' : 'var(--text-secondary)',
+                  background: uploadTab === 'paste' ? 'var(--accent)' : 'var(--surface-2)',
+                  color: uploadTab === 'paste' ? '#fff' : 'var(--text-secondary)',
                   border: '1px solid var(--border)',
                   borderRadius: '6px',
                   cursor: 'pointer',
                 }}
               >
-                Paste Code
+                Paste
               </button>
               <button
-                onClick={() => setUploadMode('file')}
+                onClick={() => setUploadTab('bulk')}
                 style={{
                   padding: '6px 14px',
                   fontSize: '13px',
-                  background: uploadMode === 'file' ? 'var(--accent)' : 'var(--surface-2)',
-                  color: uploadMode === 'file' ? '#fff' : 'var(--text-secondary)',
+                  background: uploadTab === 'bulk' ? 'var(--accent)' : 'var(--surface-2)',
+                  color: uploadTab === 'bulk' ? '#fff' : 'var(--text-secondary)',
                   border: '1px solid var(--border)',
                   borderRadius: '6px',
                   cursor: 'pointer',
                 }}
               >
-                Upload File
+                Upload Files
               </button>
             </div>
 
-            {uploadMode === 'paste' ? (
-              <label style={{ display: 'block', marginBottom: '12px' }}>
-                <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                  Code *
-                </span>
-                <textarea
-                  value={uploadCode}
-                  onChange={(e) => setUploadCode(e.target.value)}
-                  placeholder="Paste your HTML or React code here..."
-                  rows={12}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    background: 'var(--surface-2)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '6px',
-                    color: 'var(--text-primary)',
-                    fontSize: '13px',
-                    fontFamily: 'monospace',
-                    outline: 'none',
-                    resize: 'vertical',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </label>
-            ) : (
-              <div style={{ marginBottom: '12px' }}>
-                <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                  File *
-                </span>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".html,.htm,.jsx,.tsx"
-                  onChange={handleFileUpload}
-                  style={{
-                    width: '100%',
-                    padding: '8px',
-                    background: 'var(--surface-2)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '6px',
-                    color: 'var(--text-primary)',
-                    fontSize: '13px',
-                    boxSizing: 'border-box',
-                  }}
-                />
-                {uploadCode && (
-                  <div style={{ fontSize: '12px', color: 'var(--success)', marginTop: '4px' }}>
-                    File loaded ({uploadCode.length} characters)
+            {uploadTab === 'paste' ? (
+              <>
+                <label style={{ display: 'block', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                    Title *
+                  </span>
+                  <input
+                    type="text"
+                    value={uploadTitle}
+                    onChange={(e) => setUploadTitle(e.target.value)}
+                    placeholder="My Cool Component"
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: 'var(--surface-2)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                      fontSize: '14px',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </label>
+
+                {/* Paste/File sub-mode */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                  <button
+                    onClick={() => setUploadMode('paste')}
+                    style={{
+                      padding: '6px 14px',
+                      fontSize: '13px',
+                      background: uploadMode === 'paste' ? 'var(--accent)' : 'var(--surface-2)',
+                      color: uploadMode === 'paste' ? '#fff' : 'var(--text-secondary)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Paste Code
+                  </button>
+                  <button
+                    onClick={() => setUploadMode('file')}
+                    style={{
+                      padding: '6px 14px',
+                      fontSize: '13px',
+                      background: uploadMode === 'file' ? 'var(--accent)' : 'var(--surface-2)',
+                      color: uploadMode === 'file' ? '#fff' : 'var(--text-secondary)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Upload File
+                  </button>
+                </div>
+
+                {uploadMode === 'paste' ? (
+                  <label style={{ display: 'block', marginBottom: '12px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      Code *
+                    </span>
+                    <textarea
+                      value={uploadCode}
+                      onChange={(e) => setUploadCode(e.target.value)}
+                      placeholder="Paste your HTML or React code here..."
+                      rows={12}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '6px',
+                        color: 'var(--text-primary)',
+                        fontSize: '13px',
+                        fontFamily: 'monospace',
+                        outline: 'none',
+                        resize: 'vertical',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </label>
+                ) : (
+                  <div style={{ marginBottom: '12px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      File *
+                    </span>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".html,.htm,.jsx,.tsx"
+                      onChange={handleFileUpload}
+                      style={{
+                        width: '100%',
+                        padding: '8px',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '6px',
+                        color: 'var(--text-primary)',
+                        fontSize: '13px',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                    {uploadCode && (
+                      <div style={{ fontSize: '12px', color: 'var(--success)', marginTop: '4px' }}>
+                        File loaded ({uploadCode.length} characters)
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
+
+                <label style={{ display: 'block', marginBottom: '20px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                    Tags (comma-separated)
+                  </span>
+                  <input
+                    type="text"
+                    value={uploadTags}
+                    onChange={(e) => setUploadTags(e.target.value)}
+                    placeholder="react, animation, dashboard"
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: 'var(--surface-2)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                      fontSize: '14px',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </label>
+
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => setShowUpload(false)}
+                    disabled={uploading}
+                    style={{
+                      padding: '8px 16px',
+                      background: 'var(--surface-2)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '6px',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleUpload}
+                    disabled={uploading || !uploadTitle.trim() || !uploadCode.trim()}
+                    style={{
+                      padding: '8px 16px',
+                      background: uploading || !uploadTitle.trim() || !uploadCode.trim() ? 'var(--surface-3)' : 'var(--accent)',
+                      border: 'none',
+                      borderRadius: '6px',
+                      color: '#fff',
+                      cursor: uploading ? 'wait' : 'pointer',
+                      fontWeight: 600,
+                      fontSize: '14px',
+                    }}
+                  >
+                    {uploading ? 'Uploading & Analyzing...' : 'Upload & Analyze'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Bulk file upload controls */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                  <input
+                    ref={bulkFilesInputRef}
+                    type="file"
+                    accept=".html,.htm,.jsx,.tsx"
+                    multiple
+                    onChange={handleBulkFileSelect}
+                    style={{ display: 'none' }}
+                  />
+                  <input
+                    ref={bulkFolderInputRef}
+                    type="file"
+                    accept=".html,.htm,.jsx,.tsx"
+                    /* @ts-expect-error webkitdirectory is a non-standard attribute */
+                    webkitdirectory=""
+                    onChange={handleBulkFileSelect}
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    onClick={() => bulkFilesInputRef.current?.click()}
+                    style={{
+                      padding: '6px 12px',
+                      background: 'var(--surface-2)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '6px',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                    }}
+                  >
+                    Select Files
+                  </button>
+                  <button
+                    onClick={() => bulkFolderInputRef.current?.click()}
+                    style={{
+                      padding: '6px 12px',
+                      background: 'var(--surface-2)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '6px',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                    }}
+                  >
+                    Select Folder
+                  </button>
+                </div>
+
+                {bulkFiles.length > 0 && (
+                  <>
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                      {bulkFiles.length} file{bulkFiles.length !== 1 ? 's' : ''} selected
+                      {bulkDupeCount > 0 && (
+                        <span style={{ color: 'var(--warning, #f59e0b)', marginLeft: '8px' }}>
+                          ({bulkNewCount} new, {bulkDupeCount} duplicate{bulkDupeCount !== 1 ? 's' : ''} skipped)
+                        </span>
+                      )}
+                    </div>
+
+                    <div style={{
+                      maxHeight: '240px',
+                      overflowY: 'auto',
+                      border: '1px solid var(--border)',
+                      borderRadius: '8px',
+                      marginBottom: '12px',
+                    }}>
+                      {bulkFiles.map((file, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '8px 12px',
+                            borderBottom: i < bulkFiles.length - 1 ? '1px solid var(--border)' : 'none',
+                            background: file.isDuplicate ? 'var(--surface-2)' : 'transparent',
+                            opacity: file.isDuplicate ? 0.6 : 1,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={file.checked}
+                            disabled={file.isDuplicate}
+                            onChange={() => toggleBulkFile(i)}
+                            style={{ cursor: file.isDuplicate ? 'not-allowed' : 'pointer' }}
+                          />
+                          <span style={{ flex: 1, fontSize: '13px', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {file.title}
+                          </span>
+                          {file.isDuplicate && (
+                            <span style={{
+                              fontSize: '11px',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              background: 'var(--warning, #f59e0b)',
+                              color: '#000',
+                              fontWeight: 600,
+                              whiteSpace: 'nowrap',
+                            }}>
+                              Duplicate
+                            </span>
+                          )}
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                            {(file.content.length / 1024).toFixed(1)}KB
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                <label style={{ display: 'block', marginBottom: '20px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                    Tags for all files (comma-separated)
+                  </span>
+                  <input
+                    type="text"
+                    value={bulkTags}
+                    onChange={(e) => setBulkTags(e.target.value)}
+                    placeholder="react, animation, dashboard"
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: 'var(--surface-2)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                      fontSize: '14px',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </label>
+
+                {bulkProgress && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ fontSize: '13px', color: 'var(--accent)', marginBottom: '4px' }}>
+                      Uploading {bulkProgress.current}/{bulkProgress.total}...
+                    </div>
+                    <div style={{ height: '4px', background: 'var(--surface-3)', borderRadius: '2px' }}>
+                      <div style={{
+                        height: '100%',
+                        background: 'var(--accent)',
+                        borderRadius: '2px',
+                        width: `${(bulkProgress.current / bulkProgress.total) * 100}%`,
+                        transition: 'width 0.3s',
+                      }} />
+                    </div>
+                  </div>
+                )}
+
+                {bulkErrors.length > 0 && (
+                  <div style={{ marginBottom: '12px', padding: '8px', background: 'var(--surface-2)', borderRadius: '6px', border: '1px solid var(--danger)' }}>
+                    {bulkErrors.map((err, i) => (
+                      <div key={i} style={{ fontSize: '12px', color: 'var(--danger)', marginBottom: '2px' }}>{err}</div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => setShowUpload(false)}
+                    disabled={uploading || !!bulkProgress}
+                    style={{
+                      padding: '8px 16px',
+                      background: 'var(--surface-2)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '6px',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleBulkUpload}
+                    disabled={bulkNewCount === 0 || uploading || !!bulkProgress}
+                    style={{
+                      padding: '8px 16px',
+                      background: bulkNewCount === 0 || uploading ? 'var(--surface-3)' : 'var(--accent)',
+                      border: 'none',
+                      borderRadius: '6px',
+                      color: '#fff',
+                      cursor: uploading ? 'wait' : 'pointer',
+                      fontWeight: 600,
+                      fontSize: '14px',
+                    }}
+                  >
+                    {bulkProgress
+                      ? `Uploading ${bulkProgress.current}/${bulkProgress.total}...`
+                      : `Upload & Analyze All (${bulkNewCount})`}
+                  </button>
+                </div>
+              </>
             )}
-
-            <label style={{ display: 'block', marginBottom: '20px' }}>
-              <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                Tags (comma-separated)
-              </span>
-              <input
-                type="text"
-                value={uploadTags}
-                onChange={(e) => setUploadTags(e.target.value)}
-                placeholder="react, animation, dashboard"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: 'var(--surface-2)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '6px',
-                  color: 'var(--text-primary)',
-                  fontSize: '14px',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </label>
-
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setShowUpload(false)}
-                disabled={uploading}
-                style={{
-                  padding: '8px 16px',
-                  background: 'var(--surface-2)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '6px',
-                  color: 'var(--text-secondary)',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUpload}
-                disabled={uploading || !uploadTitle.trim() || !uploadCode.trim()}
-                style={{
-                  padding: '8px 16px',
-                  background: uploading || !uploadTitle.trim() || !uploadCode.trim() ? 'var(--surface-3)' : 'var(--accent)',
-                  border: 'none',
-                  borderRadius: '6px',
-                  color: '#fff',
-                  cursor: uploading ? 'wait' : 'pointer',
-                  fontWeight: 600,
-                  fontSize: '14px',
-                }}
-              >
-                {uploading ? 'Uploading & Analyzing...' : 'Upload & Analyze'}
-              </button>
-            </div>
           </div>
         </div>
       )}
