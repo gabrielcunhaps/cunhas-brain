@@ -797,6 +797,8 @@ interface GraphNode {
   connections: number;
 }
 
+type GraphView = 'files' | 'words';
+
 function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const nodesRef = useRef<GraphNode[]>([]);
@@ -805,6 +807,8 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
   const [graphLoaded, setGraphLoaded] = useState(false);
   const [nodeCount, setNodeCount] = useState(0);
   const [popup, setPopup] = useState<{ node: GraphNode; x: number; y: number; connections: number; keywords: string[] } | null>(null);
+  const [viewMode, setViewMode] = useState<GraphView>('files');
+  const rawGraphRef = useRef<GraphData | null>(null);
   const offsetRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
   const dragRef = useRef<{ dragging: boolean; lastX: number; lastY: number }>({ dragging: false, lastX: 0, lastY: 0 });
@@ -822,44 +826,101 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
     return null;
   }, []);
 
+  function buildGraph(data: GraphData, mode: GraphView) {
+    const canvas = canvasRef.current;
+    const w = canvas?.parentElement?.clientWidth || 800;
+    const h = canvas?.parentElement?.clientHeight || 600;
+
+    if (mode === 'files') {
+      // Files view: nodes = notes, edges = connections between notes
+      const connCount: Record<number, number> = {};
+      for (const e of data.edges) {
+        connCount[e.source] = (connCount[e.source] || 0) + 1;
+        connCount[e.target] = (connCount[e.target] || 0) + 1;
+      }
+      nodesRef.current = data.nodes.map((n) => ({
+        ...n,
+        x: w / 2 + (Math.random() - 0.5) * 400,
+        y: h / 2 + (Math.random() - 0.5) * 300,
+        vx: 0, vy: 0,
+        connections: connCount[n.id] || 0,
+      }));
+      edgesRef.current = data.edges;
+    } else {
+      // Words view: nodes = keywords/wikilinks, edges = keywords that appear in the same note
+      const keywordSet = new Map<string, { id: number; noteIds: number[] }>();
+      let nextId = -1;
+
+      // Collect all keywords and which notes they appear in
+      for (const node of data.nodes) {
+        for (const wl of (node.wikilinks || [])) {
+          const key = wl.toLowerCase();
+          if (!keywordSet.has(key)) {
+            keywordSet.set(key, { id: nextId--, noteIds: [] });
+          }
+          keywordSet.get(key)!.noteIds.push(node.id);
+        }
+      }
+
+      // Build keyword nodes
+      const kwNodes: GraphNode[] = [];
+      keywordSet.forEach((val, key) => {
+        kwNodes.push({
+          id: val.id,
+          title: key,
+          wikilinks: [],
+          x: w / 2 + (Math.random() - 0.5) * 400,
+          y: h / 2 + (Math.random() - 0.5) * 300,
+          vx: 0, vy: 0,
+          connections: val.noteIds.length,
+        });
+      });
+
+      // Build edges: two keywords are connected if they share a note
+      const kwEdges: { source: number; target: number; keyword: string }[] = [];
+      const kwArr = Array.from(keywordSet.entries());
+      for (let i = 0; i < kwArr.length; i++) {
+        for (let j = i + 1; j < kwArr.length; j++) {
+          const shared = kwArr[i][1].noteIds.filter((id) => kwArr[j][1].noteIds.includes(id));
+          if (shared.length > 0) {
+            kwEdges.push({ source: kwArr[i][1].id, target: kwArr[j][1].id, keyword: `${shared.length} shared` });
+          }
+        }
+      }
+
+      nodesRef.current = kwNodes;
+      edgesRef.current = kwEdges;
+    }
+
+    setNodeCount(nodesRef.current.length);
+    offsetRef.current = { x: 0, y: 0 };
+    zoomRef.current = 1;
+    setPopup(null);
+  }
+
   useEffect(() => {
     async function load() {
       try {
         const res = await fetch('/api/notes/graph');
         const data: GraphData = await res.json();
         if (!data.nodes) return;
-
-        // Count connections per node
-        const connCount: Record<number, number> = {};
-        for (const e of data.edges) {
-          connCount[e.source] = (connCount[e.source] || 0) + 1;
-          connCount[e.target] = (connCount[e.target] || 0) + 1;
-        }
-
-        const canvas = canvasRef.current;
-        const w = canvas?.parentElement?.clientWidth || 800;
-        const h = canvas?.parentElement?.clientHeight || 600;
-
-        nodesRef.current = data.nodes.map((n) => ({
-          ...n,
-          x: w / 2 + (Math.random() - 0.5) * 300,
-          y: h / 2 + (Math.random() - 0.5) * 300,
-          vx: 0,
-          vy: 0,
-          connections: connCount[n.id] || 0,
-        }));
-        edgesRef.current = data.edges;
-        setNodeCount(data.nodes.length);
+        rawGraphRef.current = data;
+        buildGraph(data, viewMode);
         setGraphLoaded(true);
-
-        // Center offset
-        offsetRef.current = { x: 0, y: 0 };
       } catch (err) {
         console.error('Failed to load graph:', err);
       }
     }
     load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (rawGraphRef.current) {
+      buildGraph(rawGraphRef.current, viewMode);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1095,6 +1156,29 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+      {/* View toggle */}
+      <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 10, display: 'flex', gap: 4, background: 'var(--surface-1)', borderRadius: 8, padding: 4, border: '1px solid var(--border)' }}>
+        <button
+          onClick={() => setViewMode('files')}
+          style={{
+            padding: '6px 14px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            background: viewMode === 'files' ? 'var(--accent)' : 'transparent',
+            color: viewMode === 'files' ? 'white' : 'var(--text-secondary)',
+          }}
+        >
+          Files
+        </button>
+        <button
+          onClick={() => setViewMode('words')}
+          style={{
+            padding: '6px 14px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            background: viewMode === 'words' ? 'var(--accent)' : 'transparent',
+            color: viewMode === 'words' ? 'white' : 'var(--text-secondary)',
+          }}
+        >
+          Words
+        </button>
+      </div>
       <canvas
         ref={canvasRef}
         onMouseMove={handleMouseMove}
@@ -1148,12 +1232,19 @@ function GraphTab({ onNodeClick }: { onNodeClick: (id: number) => void }) {
             </div>
           )}
           <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={() => { onNodeClick(popup.node.id); setPopup(null); }}
-              style={{ flex: 1, padding: '6px 0', borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-            >
-              Open Note
-            </button>
+            {popup.node.id > 0 && (
+              <button
+                onClick={() => { onNodeClick(popup.node.id); setPopup(null); }}
+                style={{ flex: 1, padding: '6px 0', borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              >
+                Open Note
+              </button>
+            )}
+            {popup.node.id < 0 && (
+              <div style={{ flex: 1, fontSize: 11, color: 'var(--text-muted)', padding: '6px 0' }}>
+                Keyword — appears in {popup.connections} note{popup.connections !== 1 ? 's' : ''}
+              </div>
+            )}
             <button
               onClick={() => setPopup(null)}
               style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text-secondary)', fontSize: 12, cursor: 'pointer' }}
