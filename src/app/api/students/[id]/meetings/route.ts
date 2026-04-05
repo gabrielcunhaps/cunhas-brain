@@ -85,6 +85,37 @@ Return as JSON only, no markdown:
   "nextSessionPlan": "Concrete plan for next session — what to review, what new ground to cover"
 }`;
 
+function extractJSON(text: string): Record<string, unknown> {
+  // Try direct parse first
+  try { return JSON.parse(text); } catch { /* continue */ }
+
+  // Try to find JSON block — match balanced braces
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (text[i] === '}') {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        try {
+          return JSON.parse(text.substring(start, i + 1));
+        } catch {
+          // Keep looking
+          start = -1;
+        }
+      }
+    }
+  }
+
+  // Last resort: greedy regex
+  const match = text.match(/\{[\s\S]*\}/);
+  if (match) return JSON.parse(match[0]);
+
+  throw new Error('No valid JSON found in response');
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -143,8 +174,7 @@ export async function POST(
 
         const textBlock = response.content.find((b) => b.type === 'text');
         if (textBlock && textBlock.type === 'text') {
-          const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
-          const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : textBlock.text);
+          const parsed = extractJSON(textBlock.text);
 
           await queryOne(
             `UPDATE students SET profile = $1, learning_plan = $2, updated_at = NOW() WHERE id = $3 RETURNING *`,
@@ -197,8 +227,7 @@ export async function POST(
 
         const textBlock = response.content.find((b) => b.type === 'text');
         if (textBlock && textBlock.type === 'text') {
-          const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
-          const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : textBlock.text);
+          const parsed = extractJSON(textBlock.text);
 
           await queryOne(
             `UPDATE student_meetings SET session_notes = $1, homework = $2, next_session_plan = $3
