@@ -17,9 +17,32 @@ const path = require('path');
 const APP_URL = process.env.CUNHAS_BRAIN_URL || 'https://cunhas-brain.vercel.app';
 const APP_PASSWORD = process.env.CUNHAS_BRAIN_PASSWORD || 'cunhasbrain2026';
 const POLL_INTERVAL = 2 * 60 * 1000;
+const STATE_FILE = path.join(os.homedir(), '.cunhas-brain-notifier-state.json');
 
-let lastCheck = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 let authCookie = '';
+let notifiedMeetingIds = new Set();
+
+function loadState() {
+  try {
+    if (fs.existsSync(STATE_FILE)) {
+      const data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+      notifiedMeetingIds = new Set(data.notifiedIds || []);
+      return data.lastCheck || new Date().toISOString();
+    }
+  } catch { /* ignore */ }
+  return new Date().toISOString();
+}
+
+function saveState(ts) {
+  try {
+    fs.writeFileSync(STATE_FILE, JSON.stringify({
+      lastCheck: ts,
+      notifiedIds: Array.from(notifiedMeetingIds).slice(-200),
+    }));
+  } catch { /* ignore */ }
+}
+
+let lastCheck = loadState();
 let workspacePrefix = '~/Desktop/workspace/';
 let repoNames = [];
 
@@ -67,9 +90,13 @@ async function checkNewMeetings() {
 
     const data = await res.json();
     for (const meeting of data.meetings || []) {
+      // Skip already-notified meetings
+      if (notifiedMeetingIds.has(String(meeting.id))) continue;
+      notifiedMeetingIds.add(String(meeting.id));
       await showPopup(meeting);
     }
     lastCheck = new Date().toISOString();
+    saveState(lastCheck);
   } catch (err) {
     console.error(`[${ts()}] Poll error:`, err.message);
   }
