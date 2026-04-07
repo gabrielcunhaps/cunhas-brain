@@ -89,14 +89,22 @@ async function checkNewMeetings() {
     if (!res.ok) return;
 
     const data = await res.json();
-    for (const meeting of data.meetings || []) {
-      // Skip already-notified meetings
-      if (notifiedMeetingIds.has(String(meeting.id))) continue;
+    const newMeetings = (data.meetings || []).filter(
+      (m) => !notifiedMeetingIds.has(String(m.id))
+    );
+
+    // Mark ALL as notified and save state BEFORE showing popups
+    // This prevents duplicates even if popups crash or script restarts
+    for (const meeting of newMeetings) {
       notifiedMeetingIds.add(String(meeting.id));
-      await showPopup(meeting);
     }
     lastCheck = new Date().toISOString();
     saveState(lastCheck);
+
+    // Now show popups (blocking — each waits for user interaction)
+    for (const meeting of newMeetings) {
+      await showPopup(meeting);
+    }
   } catch (err) {
     console.error(`[${ts()}] Poll error:`, err.message);
   }
