@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import TodaysMeetings from './TodaysMeetings';
 
 interface TodoItem {
   id: string;
@@ -194,6 +195,9 @@ export default function Dashboard() {
 
   return (
     <div>
+      {/* Today's Meetings */}
+      <TodaysMeetings />
+
       {/* Stats Bar */}
       <div
         style={{

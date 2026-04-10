@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import PromptsEditor from '@/components/PromptsEditor';
 
 interface HealthData {
   database: { ok: boolean; count?: string; error?: string };
@@ -695,6 +696,9 @@ export default function SettingsPage() {
             </div>
           </div>
         </section>
+
+        {/* Section: Prompts & Pipelines */}
+        <PromptsEditor onToast={showToast} />
 
         {/* Section 4: App Info */}
         <section className="bg-[var(--surface-1)] border border-[var(--border)] rounded-2xl p-6">

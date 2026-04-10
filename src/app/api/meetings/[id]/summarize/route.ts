@@ -4,6 +4,7 @@ import { getAnthropicClient } from '@/lib/anthropic';
 import { SUMMARIZE_PROMPT } from '@/lib/prompts';
 import { MeetingSummary } from '@/lib/types';
 import { log } from '@/lib/logger';
+import { processMeetingCategory } from '@/lib/meetingClassifier';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,6 +103,16 @@ export async function POST(
     );
 
     await log('summary', `Generated summary for: ${title}`, { meetingId });
+
+    // Auto-classify and run the per-category pipeline. Failures here must
+    // NOT break summary generation — catch and log only.
+    try {
+      await processMeetingCategory(meetingId);
+    } catch (catErr) {
+      const msg = catErr instanceof Error ? catErr.message : String(catErr);
+      console.error('Category pipeline failed:', msg);
+      await log('error', `Category pipeline failed for meeting ${meetingId}: ${msg}`, { meetingId });
+    }
 
     const summary: MeetingSummary = {
       meetingId,
