@@ -11,13 +11,8 @@ interface TodayMeeting {
   duration: number | null;
   summary: string | null;
   category: CategoryId | null;
-  category_confidence: number | null;
-  category_manual: boolean;
-  has_summary: boolean;
-}
-
-interface TodayResponse {
-  meetings: TodayMeeting[];
+  categoryConfidence: number | null;
+  categoryManual: boolean;
 }
 
 function formatTime(dateStr: string): string {
@@ -50,10 +45,19 @@ export default function TodaysMeetings() {
 
   const fetchMeetings = useCallback(async () => {
     try {
-      const res = await fetch('/api/meetings/today');
+      // Compute "today" in the user's local timezone and send to server
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1);
+      const params = new URLSearchParams({
+        from: start.toISOString(),
+        to: end.toISOString(),
+      });
+      const res = await fetch(`/api/meetings/today?${params}`);
       if (!res.ok) throw new Error('Failed to fetch today meetings');
-      const data: TodayResponse = await res.json();
-      setMeetings(data.meetings || []);
+      const data: TodayMeeting[] = await res.json();
+      setMeetings(Array.isArray(data) ? data : []);
       setError(null);
     } catch (err) {
       console.error('Error fetching today meetings:', err);
@@ -97,7 +101,7 @@ export default function TodaysMeetings() {
     setMeetings((prev) =>
       prev.map((m) =>
         m.id === meetingId
-          ? { ...m, category, category_manual: true, category_confidence: 1 }
+          ? { ...m, category, categoryManual: true, categoryConfidence: 1 }
           : m
       )
     );
@@ -274,9 +278,9 @@ export default function TodaysMeetings() {
                     {meta ? (
                       <CategoryBadge
                         category={m.category}
-                        manual={m.category_manual}
+                        manual={m.categoryManual}
                         clickable
-                        confidence={m.category_confidence}
+                        confidence={m.categoryConfidence}
                         onClick={(e) => {
                           e.stopPropagation();
                           setOpenDropdown(openDropdown === m.id ? null : m.id);
@@ -310,7 +314,7 @@ export default function TodaysMeetings() {
                     )}
                   </div>
 
-                  {!m.category_manual && m.category_confidence != null && (
+                  {!m.categoryManual && m.categoryConfidence != null && (
                     <span
                       style={{
                         fontSize: 9,
@@ -322,13 +326,13 @@ export default function TodaysMeetings() {
                       }}
                       title="Auto-classified confidence"
                     >
-                      {Math.round(m.category_confidence * 100)}%
+                      {Math.round(m.categoryConfidence * 100)}%
                     </span>
                   )}
 
                   <div style={{ flex: 1 }} />
 
-                  {!m.has_summary ? (
+                  {!m.summary ? (
                     <button
                       onClick={() => summarize(m.id)}
                       disabled={busy}

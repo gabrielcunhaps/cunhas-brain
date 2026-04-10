@@ -1,14 +1,28 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
+    const { searchParams } = new URL(request.url);
+    // Accept client-provided start/end to respect user's local timezone
+    const fromParam = searchParams.get('from');
+    const toParam = searchParams.get('to');
+
+    let startIso: string;
+    let endIso: string;
+
+    if (fromParam && toParam) {
+      startIso = fromParam;
+      endIso = toParam;
+    } else {
+      // Fallback: last 24 hours (covers most "today" cases regardless of timezone)
+      const now = new Date();
+      const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      startIso = start.toISOString();
+      endIso = now.toISOString();
+    }
 
     const rows = await query<Record<string, unknown>>(
       `SELECT m.id, m.title, m.date, m.duration, m.speakers,
@@ -17,7 +31,7 @@ export async function GET() {
          LEFT JOIN meeting_summaries ms ON ms.meeting_id = m.id
         WHERE m.date >= $1 AND m.date < $2
         ORDER BY m.date DESC`,
-      [start.toISOString(), end.toISOString()]
+      [startIso, endIso]
     );
 
     const meetings = rows.map((row) => {
