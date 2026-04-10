@@ -6,6 +6,10 @@ export interface Meeting {
   participants: string[];
   speakers: { name?: string; first_name?: string; last_name?: string; index: number }[];
   hasTranscript: boolean;
+  category?: string | null;
+  categoryConfidence?: number | null;
+  categoryManual?: boolean;
+  matchCount?: number;
 }
 
 export interface SpeakerSegment {

@@ -3,13 +3,18 @@
 import { useRouter } from 'next/navigation';
 import { Meeting } from '@/lib/types';
 import { formatDuration, formatRelativeDate } from '@/lib/utils';
+import CategoryBadge from './CategoryBadge';
 
 interface MeetingCardProps {
   meeting: Meeting;
+  activeVariable?: string | null;
 }
 
-export default function MeetingCard({ meeting }: MeetingCardProps) {
+export default function MeetingCard({ meeting, activeVariable }: MeetingCardProps) {
   const router = useRouter();
+
+  const matchCount = meeting.matchCount || 0;
+  const showMatchBadge = !!activeVariable && matchCount > 0;
 
   return (
     <div
@@ -26,6 +31,14 @@ export default function MeetingCard({ meeting }: MeetingCardProps) {
       </p>
 
       <div className="flex items-center gap-2 flex-wrap">
+        {meeting.category && (
+          <CategoryBadge
+            category={meeting.category}
+            manual={meeting.categoryManual}
+            confidence={meeting.categoryConfidence ?? null}
+          />
+        )}
+
         <span className="bg-[var(--surface-3)] text-[var(--text-secondary)] text-xs px-2 py-0.5 rounded-full">
           {formatDuration(meeting.duration)}
         </span>
@@ -45,6 +58,13 @@ export default function MeetingCard({ meeting }: MeetingCardProps) {
         {meeting.hasTranscript && (
           <span className="bg-[var(--accent)]/10 text-[var(--accent)] text-xs px-2 py-0.5 rounded-full">
             Transcript
+          </span>
+        )}
+
+        {showMatchBadge && (
+          <span className="bg-[var(--accent)]/15 text-[var(--accent)] text-xs px-2 py-0.5 rounded-full font-semibold border border-[var(--accent)]/30">
+            {matchCount} {activeVariable}
+            {matchCount !== 1 ? 's' : ''}
           </span>
         )}
       </div>

@@ -345,9 +345,159 @@ async function runOthers(meetingId: number, ctx: MeetingContext) {
 }
 
 /**
+ * Extract a category-flavored `summary` string from the parsed pipeline data,
+ * if present. Handles the student_lesson case where the summary lives under
+ * `sessionInsights.sessionSummary` (first session) or top-level `sessionSummary`
+ * (subsequent sessions).
+ */
+function extractCategorySummary(category: string, data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null;
+  const d = data as Record<string, unknown>;
+  if (category === 'student_lesson') {
+    const insights = d.sessionInsights as Record<string, unknown> | undefined;
+    if (insights && typeof insights.sessionSummary === 'string') {
+      return insights.sessionSummary;
+    }
+    if (typeof d.sessionSummary === 'string') return d.sessionSummary;
+    return null;
+  }
+  if (typeof d.summary === 'string' && d.summary.trim().length > 0) {
+    return d.summary;
+  }
+  return null;
+}
+
+/**
+ * Insert searchable facts from the parsed pipeline data into
+ * `meeting_metadata`. Always wipes existing rows for this meeting + category
+ * first so repeated runs stay fresh.
+ */
+async function indexMeetingMetadata(
+  meetingId: number,
+  category: string,
+  data: unknown
+): Promise<void> {
+  // Wipe existing rows for this meeting first (all categories) so we never
+  // leave stale entries from a previous pipeline run.
+  await query('DELETE FROM meeting_metadata WHERE meeting_id = $1', [meetingId]);
+
+  if (!data || typeof data !== 'object') return;
+  const d = data as Record<string, unknown>;
+
+  const insertRow = async (
+    variable: string,
+    value: string,
+    extra: Record<string, unknown> | null
+  ) => {
+    if (!value || !value.trim()) return;
+    await query(
+      `INSERT INTO meeting_metadata (meeting_id, category, variable, value, extra)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [meetingId, category, variable, value, extra ? JSON.stringify(extra) : null]
+    );
+  };
+
+  try {
+    if (category === 'netsuite_kt') {
+      const reminders = Array.isArray(d.reminders) ? (d.reminders as unknown[]) : [];
+      for (const r of reminders) {
+        if (typeof r !== 'object' || r === null) continue;
+        const rr = r as Record<string, unknown>;
+        const text = typeof rr.reminder === 'string' ? rr.reminder : '';
+        const topic = typeof rr.topic === 'string' ? rr.topic : null;
+        const remind = rr.remind_before_next;
+        await insertRow('reminder', text, { topic, remind_before_next: remind ?? null });
+      }
+      const topics = Array.isArray(d.topics_covered) ? (d.topics_covered as unknown[]) : [];
+      for (const t of topics) {
+        if (typeof t === 'string') await insertRow('topic_covered', t, null);
+      }
+      const openQs = Array.isArray(d.open_questions) ? (d.open_questions as unknown[]) : [];
+      for (const q of openQs) {
+        if (typeof q === 'string') await insertRow('open_question', q, null);
+      }
+    } else if (category === 'manager_1on1') {
+      const buckets: Array<[string, unknown]> = [
+        ['priority', d.priorities],
+        ['todo', d.todos],
+        ['prep', d.prep],
+        ['decision', d.decisions],
+      ];
+      for (const [type, arr] of buckets) {
+        if (!Array.isArray(arr)) continue;
+        for (const item of arr) {
+          if (typeof item === 'string') {
+            await insertRow(type, item, { due_date: null, status: 'pending' });
+          } else if (typeof item === 'object' && item !== null) {
+            const it = item as Record<string, unknown>;
+            const content = typeof it.content === 'string' ? it.content : '';
+            const dueDate = typeof it.due_date === 'string' ? it.due_date : null;
+            await insertRow(type, content, { due_date: dueDate, status: 'pending' });
+          }
+        }
+      }
+    } else if (category === 'customer_engagement') {
+      const customer = typeof d.customer === 'string' ? d.customer : null;
+      const buckets: Array<[string, unknown]> = [
+        ['use_case', d.use_cases],
+        ['question', d.questions],
+        ['comment', d.comments],
+        ['objection', d.objections],
+        ['feature_request', d.feature_requests],
+      ];
+      for (const [type, arr] of buckets) {
+        if (!Array.isArray(arr)) continue;
+        for (const item of arr) {
+          if (typeof item === 'string') {
+            await insertRow(type, item, { customer, topic: null });
+          } else if (typeof item === 'object' && item !== null) {
+            const it = item as Record<string, unknown>;
+            const content = typeof it.content === 'string' ? it.content : '';
+            const topic = typeof it.topic === 'string' ? it.topic : null;
+            await insertRow(type, content, { customer, topic });
+          }
+        }
+      }
+    } else if (category === 'student_lesson') {
+      const student = typeof d.student_name === 'string' ? d.student_name : null;
+      const topic = typeof d.topic === 'string' ? d.topic : null;
+      if (typeof d.is_student_lesson === 'boolean') {
+        await insertRow(
+          'student_lesson',
+          String(d.is_student_lesson),
+          { student_name: student, topic }
+        );
+      }
+    } else if (category === 'others') {
+      const topics = Array.isArray(d.topics) ? (d.topics as unknown[]) : [];
+      for (const t of topics) {
+        if (typeof t === 'string') await insertRow('topic', t, null);
+      }
+      const decisions = Array.isArray(d.decisions) ? (d.decisions as unknown[]) : [];
+      for (const dec of decisions) {
+        if (typeof dec === 'string') await insertRow('decision', dec, null);
+      }
+      const followUps = Array.isArray(d.follow_ups) ? (d.follow_ups as unknown[]) : [];
+      for (const f of followUps) {
+        if (typeof f === 'string') await insertRow('follow_up', f, null);
+      }
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await log('error', `indexMeetingMetadata failed for meeting ${meetingId}: ${msg}`, {
+      meetingId,
+      category,
+    });
+  }
+}
+
+/**
  * Run the per-category extraction pipeline for an already-classified meeting.
- * Stores structured results in the relevant table(s) and mirrors the parsed
- * JSON into `meeting_summaries.category_data` for quick access.
+ * Stores structured results in the relevant table(s), mirrors the parsed JSON
+ * into `meeting_summaries.category_data`, updates `meeting_summaries.summary`
+ * with a category-flavored summary (when the prompt returns one), sets
+ * `summary_source` to the category id, and populates `meeting_metadata` for
+ * fast filtering and search.
  */
 export async function runCategoryPipeline(
   meetingId: number,
@@ -384,10 +534,29 @@ export async function runCategoryPipeline(
     throw err;
   }
 
-  await query(
-    `UPDATE meeting_summaries SET category_data = $1 WHERE meeting_id = $2`,
-    [JSON.stringify(data ?? {}), meetingId]
-  );
+  const categorySummary = extractCategorySummary(category, data);
+  if (categorySummary) {
+    await query(
+      `UPDATE meeting_summaries
+          SET category_data = $1,
+              summary = $2,
+              summary_source = $3,
+              generated_at = NOW()
+        WHERE meeting_id = $4`,
+      [JSON.stringify(data ?? {}), categorySummary, category, meetingId]
+    );
+  } else {
+    await query(
+      `UPDATE meeting_summaries
+          SET category_data = $1,
+              summary_source = COALESCE(summary_source, 'generic')
+        WHERE meeting_id = $2`,
+      [JSON.stringify(data ?? {}), meetingId]
+    );
+  }
+
+  // Populate searchable metadata index (best-effort, logs errors on its own).
+  await indexMeetingMetadata(meetingId, category, data);
 
   await log('summary', `Pipeline ${category} completed for meeting ${meetingId}`, { meetingId });
 

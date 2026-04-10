@@ -20,7 +20,7 @@ const VALID_CATEGORIES = [
 async function loadCategoryRow(meetingId: number) {
   return queryOne<Record<string, unknown>>(
     `SELECT meeting_id, category, category_confidence, category_manual,
-            category_reasoning, category_data
+            category_reasoning, category_data, summary, summary_source
        FROM meeting_summaries
       WHERE meeting_id = $1`,
     [meetingId]
@@ -44,7 +44,30 @@ function shapeRow(row: Record<string, unknown> | null) {
     manual: row.category_manual ?? false,
     reasoning: row.category_reasoning ?? null,
     data,
+    summary: (row.summary as string) || null,
+    summarySource: (row.summary_source as string) || null,
   };
+}
+
+/**
+ * Ensure a `meeting_summaries` row exists for this meeting so the category
+ * pipeline has a target to write to. Creates an empty shell if missing.
+ * Returns false if the meeting itself does not exist.
+ */
+async function ensureSummaryRow(meetingId: number): Promise<boolean> {
+  const meeting = await queryOne<{ id: number }>(
+    'SELECT id FROM meetings WHERE id = $1',
+    [meetingId]
+  );
+  if (!meeting) return false;
+
+  await query(
+    `INSERT INTO meeting_summaries (meeting_id, summary)
+     VALUES ($1, '')
+     ON CONFLICT (meeting_id) DO NOTHING`,
+    [meetingId]
+  );
+  return true;
 }
 
 export async function GET(
@@ -83,16 +106,12 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid meeting id' }, { status: 400 });
     }
 
-    // Make sure a meeting_summaries row exists so we can persist category fields
-    const summaryExists = await queryOne<{ meeting_id: number }>(
-      'SELECT meeting_id FROM meeting_summaries WHERE meeting_id = $1',
-      [meetingId]
-    );
-    if (!summaryExists) {
-      return NextResponse.json(
-        { error: 'No summary exists for this meeting yet. Summarize it first.' },
-        { status: 400 }
-      );
+    // Make sure a meeting_summaries row exists so we can persist category fields.
+    // If the meeting has no summary row yet, create an empty one so the pipeline
+    // can populate both summary + category_data in a single step.
+    const ok = await ensureSummaryRow(meetingId);
+    if (!ok) {
+      return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
     }
 
     let body: { category?: string; manual?: boolean } = {};

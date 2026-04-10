@@ -11,33 +11,71 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0', 10);
     const from = searchParams.get('from');
     const to = searchParams.get('to');
+    const category = searchParams.get('category');
+    const variable = searchParams.get('variable');
+    const hasTodosParam = searchParams.get('hasTodos');
+    const hasTodos = hasTodosParam === 'true';
 
-    let sql = 'SELECT id, title, date, duration, participants, speakers, (length(raw_content) > 0) as has_transcript FROM meetings';
     const conditions: string[] = [];
     const params: unknown[] = [];
     let paramIdx = 1;
 
     if (search) {
-      conditions.push(`title ILIKE $${paramIdx}`);
+      conditions.push(`m.title ILIKE $${paramIdx}`);
       params.push(`%${search}%`);
       paramIdx++;
     }
     if (from) {
-      conditions.push(`date >= $${paramIdx}`);
+      conditions.push(`m.date >= $${paramIdx}`);
       params.push(from);
       paramIdx++;
     }
     if (to) {
-      conditions.push(`date <= $${paramIdx}`);
+      conditions.push(`m.date <= $${paramIdx}`);
       params.push(to);
       paramIdx++;
     }
+    if (category) {
+      conditions.push(`ms.category = $${paramIdx}`);
+      params.push(category);
+      paramIdx++;
+    }
+
+    // Placeholder index for variable subquery (used in SELECT and WHERE)
+    let variableParamIdx: number | null = null;
+    if (variable) {
+      variableParamIdx = paramIdx;
+      params.push(variable);
+      paramIdx++;
+      conditions.push(
+        `EXISTS (SELECT 1 FROM meeting_metadata mm WHERE mm.meeting_id = m.id AND mm.variable = $${variableParamIdx})`
+      );
+    }
+
+    if (hasTodos) {
+      conditions.push(
+        `((ms.action_items IS NOT NULL AND jsonb_array_length(ms.action_items) > 0)
+          OR EXISTS (SELECT 1 FROM meeting_metadata mm WHERE mm.meeting_id = m.id AND mm.variable = 'todo'))`
+      );
+    }
+
+    const matchCountSelect = variableParamIdx
+      ? `(SELECT COUNT(*) FROM meeting_metadata mm WHERE mm.meeting_id = m.id AND mm.variable = $${variableParamIdx})::int as match_count`
+      : `0::int as match_count`;
+
+    let sql = `
+      SELECT m.id, m.title, m.date, m.duration, m.participants, m.speakers,
+             (length(m.raw_content) > 0) as has_transcript,
+             ms.category, ms.category_confidence, ms.category_manual,
+             ${matchCountSelect}
+        FROM meetings m
+        LEFT JOIN meeting_summaries ms ON ms.meeting_id = m.id`;
 
     if (conditions.length > 0) {
       sql += ' WHERE ' + conditions.join(' AND ');
     }
 
-    sql += ` ORDER BY date DESC LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`;
+    sql += ` ORDER BY m.date DESC LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`;
     params.push(limit, offset);
 
     const rows = await query(sql, params);
@@ -63,6 +101,10 @@ export async function GET(request: NextRequest) {
           index: Number(s.index || 0),
         })),
         hasTranscript: row.has_transcript || false,
+        category: (row.category as string) || null,
+        categoryConfidence: row.category_confidence ?? null,
+        categoryManual: row.category_manual ?? false,
+        matchCount: Number(row.match_count || 0),
       };
     });
 

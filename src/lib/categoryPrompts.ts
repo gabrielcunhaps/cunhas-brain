@@ -49,6 +49,7 @@ Extract things the user should REMEMBER for next time: technical topics covered,
 
 Return ONLY a JSON object (no markdown, no code fences) with this exact shape:
 {
+  "summary": "A 2-3 paragraph summary written from the NetSuite KT perspective — what technical topics were covered, the key learnings and architecture/behavior explained, and things the user should remember before the next KT session.",
   "reminders": [
     {
       "topic": "short topic label (e.g. 'Saved Search joins')",
@@ -77,6 +78,7 @@ Extract four buckets of follow-ups so the user can act on them and prep for the 
 
 Return ONLY a JSON object (no markdown, no code fences) with this exact shape:
 {
+  "summary": "A 2-3 paragraph summary written from a manager 1:1 perspective — what the manager said mattered most, decisions that were made, priorities that shifted, and what the user needs to prep or own before the next 1:1.",
   "priorities": [
     { "content": "what the manager said matters most", "due_date": "YYYY-MM-DD or null" }
   ],
@@ -113,6 +115,7 @@ Identify the customer (company or account name) if present. Then extract:
 
 Return ONLY a JSON object (no markdown, no code fences) with this exact shape:
 {
+  "summary": "A 2-3 paragraph summary written from a customer engagement perspective — who the customer was, what use cases/questions/objections they raised, feature requests that came up, and the overall tone or interest level. Focus on what the customer said, not what the user presented.",
   "customer": "customer name or null",
   "use_cases":       [ { "content": "...", "topic": "optional short label" } ],
   "questions":       [ { "content": "...", "topic": "optional short label" } ],
@@ -236,6 +239,7 @@ Transcript excerpt:
 
 Return ONLY a JSON object (no markdown, no code fences) with this exact shape:
 {
+  "summary": "A 2-3 paragraph summary of what this meeting covered — the main topics, decisions, and follow-ups. Write it as a useful standalone recap since this meeting did not fit a specific category.",
   "topics": ["notable topic 1", "notable topic 2"],
   "decisions": ["decision made during the meeting"],
   "follow_ups": ["anything that needs follow-up"],

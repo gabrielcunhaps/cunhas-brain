@@ -9,13 +9,31 @@ interface Message {
   content: string;
 }
 
+interface ChatFilter {
+  category: string | null;
+  variable: string | null;
+  search: string | null;
+}
+
 interface ChatInterfaceProps {
   selectedMeetingIds: number[];
+  filter?: ChatFilter;
+  filteredMeetingIds?: number[];
+  filteredFactCount?: number;
 }
 
 export default function ChatInterface({
   selectedMeetingIds,
+  filter,
+  filteredMeetingIds = [],
+  filteredFactCount = 0,
 }: ChatInterfaceProps) {
+  const hasFilter = !!(filter && (filter.category || filter.variable || filter.search));
+  // If the user has selected specific meetings, those take precedence.
+  // Otherwise, fall back to the meetings surfaced by the metadata filter.
+  const effectiveMeetingIds =
+    selectedMeetingIds.length > 0 ? selectedMeetingIds : filteredMeetingIds;
+  const canChat = effectiveMeetingIds.length > 0 || hasFilter;
   const { sessionId, resetSession } = useChatSession();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -76,6 +94,7 @@ export default function ChatInterface({
           message: trimmed,
           sessionId,
           meetingIds: selectedMeetingIds,
+          filter: hasFilter ? filter : undefined,
         }),
       });
 
@@ -135,31 +154,44 @@ export default function ChatInterface({
     setHistoryLoaded(false);
   };
 
-  if (selectedMeetingIds.length === 0) {
+  if (!canChat) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
           <div className="text-4xl mb-4">💬</div>
           <h3 className="text-lg font-medium text-[var(--text-primary)] mb-2">
-            Select meetings to start chatting
+            Select meetings or pick a filter to start chatting
           </h3>
           <p className="text-sm text-[var(--text-muted)]">
-            Choose one or more meetings from the sidebar to chat about their
-            transcripts.
+            Choose meetings from the sidebar, or use the filter above to chat
+            across a category.
           </p>
         </div>
       </div>
     );
   }
 
+  const summaryText = (() => {
+    if (selectedMeetingIds.length > 0) {
+      return `${selectedMeetingIds.length} meeting${
+        selectedMeetingIds.length !== 1 ? 's' : ''
+      } selected`;
+    }
+    if (hasFilter) {
+      return `${effectiveMeetingIds.length} meeting${
+        effectiveMeetingIds.length !== 1 ? 's' : ''
+      } from filter (${filteredFactCount} fact${
+        filteredFactCount !== 1 ? 's' : ''
+      })`;
+    }
+    return '';
+  })();
+
   return (
     <div className="flex-1 flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-        <div className="text-sm text-[var(--text-secondary)]">
-          {selectedMeetingIds.length} meeting
-          {selectedMeetingIds.length !== 1 ? 's' : ''} selected
-        </div>
+        <div className="text-sm text-[var(--text-secondary)]">{summaryText}</div>
         <button
           onClick={handleNewChat}
           className="text-xs px-3 py-1.5 rounded-lg bg-[var(--surface-2)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-3)] transition-colors"
