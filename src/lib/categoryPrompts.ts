@@ -142,6 +142,86 @@ Return ONLY a JSON object (no markdown, no code fences) with this exact shape:
   "notes": "one paragraph of overall context"
 }`;
 
+export const DEFAULT_STUDENT_FIRST_PROMPT = `You are an expert AI tutor assistant analyzing a first session with a new student.
+
+Student: {studentName}
+
+Meeting transcript:
+{transcript}
+
+Analyze this first meeting and return a comprehensive JSON response. Think about what will help this student BUILD useful things and grow through hands-on practice.
+
+Return as JSON only, no markdown:
+{
+  "profile": {
+    "background": "Student's professional and educational background",
+    "goals": "What they want to achieve — be specific",
+    "level": "Current skill level (beginner/intermediate/advanced) with nuance",
+    "style": "How they learn best based on the conversation",
+    "strengths": "What they already know well",
+    "gaps": "Key knowledge gaps identified"
+  },
+  "learningPlan": {
+    "topics": ["Topic 1: description", "Topic 2: description"],
+    "milestones": ["Milestone 1: what success looks like", "Milestone 2"],
+    "timeline": "Realistic timeline with phases"
+  },
+  "sessionInsights": {
+    "sessionSummary": "What was discussed, what was demonstrated, what clicked for the student",
+    "keyLearnings": ["Specific thing the student learned or understood during this session"],
+    "bestPractices": ["Good practice or principle that was taught/demonstrated"],
+    "topicsDiscussed": ["topic 1", "topic 2"],
+    "todos": ["Specific actionable task for the student"],
+    "buildProjects": [
+      {
+        "project": "Name of something to build",
+        "description": "One line on what to build",
+        "instruction": "One-line instruction they can give to an AI to start building this",
+        "whatTheyLearn": "What skill/concept this teaches",
+        "whyItMatters": "Why this is valuable for their goals"
+      }
+    ],
+    "recommendations": ["Recommendation for what to explore or practice next"],
+    "homework": "Specific homework assignment with clear deliverables",
+    "nextSessionPlan": "What to cover next session based on where we left off"
+  }
+}`;
+
+export const DEFAULT_STUDENT_SUBSEQUENT_PROMPT = `You are an expert AI tutor assistant analyzing a follow-up session with a student.
+
+Student: {studentName}
+Learning Plan: {learningPlan}
+
+Previous sessions:
+{previousSessions}
+
+Latest meeting transcript:
+{transcript}
+
+Analyze this session in the context of the student's learning journey. Focus on what they BUILT, what they LEARNED, and what they should BUILD next.
+
+Return as JSON only, no markdown:
+{
+  "sessionSummary": "Detailed summary — what was covered, what was demonstrated, what the student practiced",
+  "keyLearnings": ["Specific concept or skill the student grasped during this session"],
+  "bestPractices": ["Good practice or principle that was taught/reinforced"],
+  "topicsDiscussed": ["topic 1", "topic 2"],
+  "progressNotes": "What improved since last session, what skills are developing, what's still challenging",
+  "todos": ["Specific actionable task with clear outcome"],
+  "buildProjects": [
+    {
+      "project": "Name of something to build",
+      "description": "One line on what to build",
+      "instruction": "One-line instruction they can give to an AI to start building this",
+      "whatTheyLearn": "What skill/concept this teaches",
+      "whyItMatters": "Why this is valuable for their goals"
+    }
+  ],
+  "recommendations": ["Recommendation for resources, tools, or practices to explore"],
+  "homework": "Specific homework with clear deliverables and deadline suggestion",
+  "nextSessionPlan": "Concrete plan for next session — what to review, what new ground to cover"
+}`;
+
 export const DEFAULT_OTHERS_PROMPT = `You are extracting notable information from a meeting that did not fit into a specific category.
 
 Meeting metadata:

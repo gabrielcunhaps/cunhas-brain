@@ -2,88 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { getAnthropicClient } from '@/lib/anthropic';
 import { log } from '@/lib/logger';
+import {
+  getPrompt,
+  fillPrompt,
+  DEFAULT_STUDENT_FIRST_PROMPT,
+  DEFAULT_STUDENT_SUBSEQUENT_PROMPT,
+} from '@/lib/categoryPrompts';
 
 export const dynamic = 'force-dynamic';
-
-const FIRST_MEETING_PROMPT = (name: string, transcript: string) => `You are an expert AI tutor assistant analyzing a first session with a new student.
-
-Student: ${name}
-
-Meeting transcript:
-${transcript.substring(0, 12000)}
-
-Analyze this first meeting and return a comprehensive JSON response. Think about what will help this student BUILD useful things and grow through hands-on practice.
-
-Return as JSON only, no markdown:
-{
-  "profile": {
-    "background": "Student's professional and educational background",
-    "goals": "What they want to achieve — be specific",
-    "level": "Current skill level (beginner/intermediate/advanced) with nuance",
-    "style": "How they learn best based on the conversation",
-    "strengths": "What they already know well",
-    "gaps": "Key knowledge gaps identified"
-  },
-  "learningPlan": {
-    "topics": ["Topic 1: description", "Topic 2: description"],
-    "milestones": ["Milestone 1: what success looks like", "Milestone 2"],
-    "timeline": "Realistic timeline with phases"
-  },
-  "sessionInsights": {
-    "sessionSummary": "What was discussed, what was demonstrated, what clicked for the student",
-    "keyLearnings": ["Specific thing the student learned or understood during this session"],
-    "bestPractices": ["Good practice or principle that was taught/demonstrated"],
-    "topicsDiscussed": ["topic 1", "topic 2"],
-    "todos": ["Specific actionable task for the student"],
-    "buildProjects": [
-      {
-        "project": "Name of something to build",
-        "description": "One line on what to build",
-        "instruction": "One-line instruction they can give to an AI to start building this",
-        "whatTheyLearn": "What skill/concept this teaches",
-        "whyItMatters": "Why this is valuable for their goals"
-      }
-    ],
-    "recommendations": ["Recommendation for what to explore or practice next"],
-    "homework": "Specific homework assignment with clear deliverables",
-    "nextSessionPlan": "What to cover next session based on where we left off"
-  }
-}`;
-
-const SUBSEQUENT_MEETING_PROMPT = (name: string, learningPlan: string, prevContext: string, transcript: string) => `You are an expert AI tutor assistant analyzing a follow-up session with a student.
-
-Student: ${name}
-Learning Plan: ${learningPlan}
-
-Previous sessions:
-${prevContext}
-
-Latest meeting transcript:
-${transcript.substring(0, 12000)}
-
-Analyze this session in the context of the student's learning journey. Focus on what they BUILT, what they LEARNED, and what they should BUILD next.
-
-Return as JSON only, no markdown:
-{
-  "sessionSummary": "Detailed summary — what was covered, what was demonstrated, what the student practiced",
-  "keyLearnings": ["Specific concept or skill the student grasped during this session"],
-  "bestPractices": ["Good practice or principle that was taught/reinforced"],
-  "topicsDiscussed": ["topic 1", "topic 2"],
-  "progressNotes": "What improved since last session, what skills are developing, what's still challenging",
-  "todos": ["Specific actionable task with clear outcome"],
-  "buildProjects": [
-    {
-      "project": "Name of something to build",
-      "description": "One line on what to build",
-      "instruction": "One-line instruction they can give to an AI to start building this",
-      "whatTheyLearn": "What skill/concept this teaches",
-      "whyItMatters": "Why this is valuable for their goals"
-    }
-  ],
-  "recommendations": ["Recommendation for resources, tools, or practices to explore"],
-  "homework": "Specific homework with clear deliverables and deadline suggestion",
-  "nextSessionPlan": "Concrete plan for next session — what to review, what new ground to cover"
-}`;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function extractJSON(text: string): any {
@@ -186,10 +112,15 @@ export async function POST(
       try {
         await log('summary', `Generating learning plan and session insights for ${student.name}`);
         const anthropic = await getAnthropicClient();
+        const template = await getPrompt('prompt_student_first', DEFAULT_STUDENT_FIRST_PROMPT);
+        const filledPrompt = fillPrompt(template, {
+          studentName: String(student.name),
+          transcript: transcript.substring(0, 12000),
+        });
         const response = await anthropic.messages.create({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 4096,
-          messages: [{ role: 'user', content: FIRST_MEETING_PROMPT(String(student.name), transcript) }],
+          messages: [{ role: 'user', content: filledPrompt }],
         });
 
         const textBlock = response.content.find((b) => b.type === 'text');
@@ -239,10 +170,17 @@ export async function POST(
           : 'No learning plan yet';
 
         const anthropic = await getAnthropicClient();
+        const template = await getPrompt('prompt_student_subsequent', DEFAULT_STUDENT_SUBSEQUENT_PROMPT);
+        const filledPrompt = fillPrompt(template, {
+          studentName: String(student.name),
+          learningPlan,
+          previousSessions: prevContext,
+          transcript: transcript.substring(0, 12000),
+        });
         const response = await anthropic.messages.create({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 4096,
-          messages: [{ role: 'user', content: SUBSEQUENT_MEETING_PROMPT(String(student.name), learningPlan, prevContext, transcript) }],
+          messages: [{ role: 'user', content: filledPrompt }],
         });
 
         const textBlock = response.content.find((b) => b.type === 'text');
