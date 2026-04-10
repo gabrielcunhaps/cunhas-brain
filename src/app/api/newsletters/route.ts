@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { getAnthropicClient } from '@/lib/anthropic';
 import { log } from '@/lib/logger';
+import { inoreaderFetch, getInoreaderToken } from '@/lib/inoreader';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,14 +21,6 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-async function getInoreaderToken(): Promise<string | null> {
-  const row = await queryOne<{ value: string }>(
-    'SELECT value FROM app_settings WHERE key = $1',
-    ['inoreader_token']
-  );
-  return row?.value || null;
-}
-
 interface InoreaderItem {
   id: string;
   title: string;
@@ -38,16 +31,14 @@ interface InoreaderItem {
   categories?: string[];
 }
 
-async function fetchFromInoreader(token: string, from: string, to: string): Promise<InoreaderItem[]> {
+async function fetchFromInoreader(from: string, to: string): Promise<InoreaderItem[]> {
   const startTs = Math.floor(new Date(from + 'T00:00:00Z').getTime() / 1000);
   const endTs = Math.floor(new Date(to + 'T23:59:59Z').getTime() / 1000);
 
   // Fetch from the Newsletter email subscription (feed/dailynewsletter3@ino.to)
   const nlStream = encodeURIComponent('feed/dailynewsletter3@ino.to');
   const nlUrl = `https://www.inoreader.com/reader/api/0/stream/contents/${nlStream}?n=100&ot=${startTs}&nt=${endTs}`;
-  const res = await fetch(nlUrl, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await inoreaderFetch(nlUrl);
 
   if (!res.ok) {
     const text = await res.text();
@@ -120,7 +111,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ articles: rows });
     }
 
-    // Fetch from Inoreader newsletter folders
+    // Fetch from Inoreader newsletter folders (auto-refreshes token on 401)
     const token = await getInoreaderToken();
     if (!token) {
       return NextResponse.json(
@@ -133,7 +124,7 @@ export async function GET(request: NextRequest) {
     const fromDate = from || date || today;
     const toDate = to || date || today;
 
-    const items = await fetchFromInoreader(token, fromDate, toDate);
+    const items = await fetchFromInoreader(fromDate, toDate);
     await cacheArticles(items);
     await log('webhook', `Fetched ${items.length} newsletter articles`, { from: fromDate, to: toDate });
 
