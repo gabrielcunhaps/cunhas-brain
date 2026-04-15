@@ -38,16 +38,34 @@ async function fetchFromInoreader(from: string, to: string): Promise<InoreaderIt
 
   // Fetch from the Newsletter email subscription (feed/dailynewsletter3@ino.to)
   const nlStream = encodeURIComponent('feed/dailynewsletter3@ino.to');
-  const nlUrl = `https://www.inoreader.com/reader/api/0/stream/contents/${nlStream}?n=100&ot=${startTs}&nt=${endTs}`;
-  const res = await inoreaderFetch(nlUrl);
+  // Paginate to get ALL articles, not just 100
+  const allItems: InoreaderItem[] = [];
+  let continuation: string | undefined;
+  const PAGE_SIZE = 100;
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Inoreader API error ${res.status}: ${text}`);
+  while (true) {
+    let pageUrl = `https://www.inoreader.com/reader/api/0/stream/contents/${nlStream}?n=${PAGE_SIZE}&ot=${startTs}&nt=${endTs}`;
+    if (continuation) pageUrl += `&c=${continuation}`;
+
+    const pageRes = await inoreaderFetch(pageUrl);
+    if (!pageRes.ok) {
+      const text = await pageRes.text();
+      throw new Error(`Inoreader API error ${pageRes.status}: ${text}`);
+    }
+
+    const pageData = await pageRes.json();
+    const pageItems = pageData.items || [];
+    allItems.push(...pageItems);
+
+    // Inoreader returns a "continuation" token if there are more pages
+    if (pageData.continuation && pageItems.length === PAGE_SIZE) {
+      continuation = pageData.continuation;
+    } else {
+      break;
+    }
   }
 
-  const data = await res.json();
-  return data.items || [];
+  return allItems;
 }
 
 async function cacheArticles(items: InoreaderItem[]) {
@@ -177,7 +195,7 @@ export async function POST(request: NextRequest) {
     }
 
     const articlesFormatted = rows
-      .map((r, i) => `--- ARTICLE ${i + 1} ---\nTitle: ${r.title}\nSource: ${r.source}\nDate: ${r.date}\nURL: ${r.url}\n\n${r.content?.slice(0, 3000) || 'No content'}\n`)
+      .map((r, i) => `--- ARTICLE ${i + 1} ---\nTitle: ${r.title}\nSource: ${r.source}\nDate: ${r.date}\nURL: ${r.url}\n\n${r.content?.slice(0, 8000) || 'No content'}\n`)
       .join('\n');
 
     const client = await getAnthropicClient();
@@ -186,7 +204,7 @@ export async function POST(request: NextRequest) {
       from,
       to,
       articleCount: String(rows.length),
-      articles: articlesFormatted.slice(0, 80000),
+      articles: articlesFormatted.slice(0, 150000),
     });
 
     const response = await client.messages.create({
