@@ -246,7 +246,7 @@ Return ONLY a JSON object (no markdown, no code fences) with this exact shape:
   "notes": "one paragraph of overall context"
 }`;
 
-export const DEFAULT_NEWSLETTER_PROMPT = `You are an AI industry analyst preparing a concise, non-redundant executive briefing.
+export const DEFAULT_NEWSLETTER_PROMPT = `You are an AI industry analyst preparing a concise, non-redundant executive briefing for a Solutions Specialist at Oracle NetSuite who works at the intersection of AI go-to-market, product development, and technical enablement.
 
 CONTEXT:
 - Source: Gabriel's Newsletter subscriptions
@@ -277,16 +277,19 @@ Then **bullet points** for the 5-10 most important developments:
 
 ## Product & Release Matrix
 
-| Company | Product | Type | What Happened | Date | Sources |
-|---|---|---|---|---|---|
+| Company | Product | Type | Key Detail | Sources |
+|---|---|---|---|---|
 
-Type: Launch / Update / Announce / Shutdown / Acquisition. Sort by date (newest first).
+Type: Launch / Update / Announce / Shutdown / Acquisition.
+- Sort by date (newest first).
+- One row per product. Combine date into Key Detail only if noteworthy.
+- Keep "Key Detail" to one sentence max.
 
 ---
 
 ## Key Themes & Cross-Newsletter Signals
 
-For each theme: bold title, 2-3 sentences max, list articles discussing it in parentheses. Only include themes in 2+ articles.
+For each theme: bold title, 2-3 sentences max, list articles discussing it in parentheses. Only include themes appearing in 2+ articles.
 
 ---
 
@@ -299,24 +302,34 @@ Only genuinely interesting opinions, predictions, or contrarian takes:
 
 ---
 
-## Market Moves & Competitive Landscape
-
-**Funding & Valuations:**
-- Company — amount, valuation, purpose (Art. X)
-
-**Strategic Moves:**
-- Company — what they did and why (Art. X)
-
----
-
 ## What to Watch
 
 5-7 bullet points max. Forward-looking, not summaries.
 
 ---
 
-ARTICLES DATA:
+## Questions Worth Asking
 
+Generate 5-10 questions prompted by the day's developments. These are questions the reader should be thinking about or raising in internal discussions.
+
+Each question must include a category tag in parentheses:
+- **(NetSuite)** — questions about positioning, sales strategy, competitive differentiation, or GTM relevance for Oracle NetSuite
+- **(Technical)** — questions about how models work, infrastructure trends, architectural shifts, or where the industry is heading technically
+
+Format:
+- **Question text here?** (Category)
+
+Prioritize questions that connect the day's news to actionable thinking — not generic industry musings.
+
+---
+
+## NetSuite GTM Brief
+
+**One paragraph** (4-6 sentences) written for NetSuite go-to-market and product teams. Summarize only the industry movements from today's articles that are directly relevant to NetSuite's positioning, product roadmap, or competitive landscape. Focus on: how AI platform shifts affect ERP/data substrate value, changes in enterprise AI buying behavior, compute/infrastructure trends that impact NetSuite's AI Connector or MCP strategy, and any competitive moves by adjacent platforms. Do not repeat facts from earlier sections — synthesize and interpret them for a NetSuite audience.
+
+---
+
+ARTICLES DATA:
 {articles}
 
 ---
