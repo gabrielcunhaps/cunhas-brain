@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
 
 interface Article {
   id: number;
@@ -25,14 +26,21 @@ function formatDate(dateStr: string): string {
   });
 }
 
-function today(): string {
-  return new Date().toISOString().split('T')[0];
+function localToday(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
-function daysAgo(n: number): string {
+function localDaysAgo(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
 }
 
 export default function NewslettersView() {
@@ -40,13 +48,15 @@ export default function NewslettersView() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsConfig, setNeedsConfig] = useState(false);
-  const [fromDate, setFromDate] = useState(today());
-  const [toDate, setToDate] = useState(today());
+  const [fromDate, setFromDate] = useState(localToday());
+  const [toDate, setToDate] = useState(localToday());
   const [viewMode, setViewMode] = useState<ViewMode>('feed');
   const [summary, setSummary] = useState<string | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryArticleCount, setSummaryArticleCount] = useState(0);
   const [activeRange, setActiveRange] = useState<string>('');
+  const [inputText, setInputText] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
 
   const fetchArticles = useCallback(async (from: string, to: string, label: string) => {
     setLoading(true);
@@ -57,6 +67,7 @@ export default function NewslettersView() {
     setToDate(to);
     setViewMode('feed');
     setSummary(null);
+    setInputText(null);
 
     try {
       const res = await fetch(`/api/newsletters?from=${from}&to=${to}`);
@@ -89,6 +100,14 @@ export default function NewslettersView() {
     setSummary(null);
     setError(null);
 
+    // Build the input text that the LLM will consume
+    const articlesFormatted = articles
+      .map((a, i) =>
+        `--- ARTICLE ${i + 1} ---\nTitle: ${a.title}\nSource: ${a.source}\nDate: ${a.date}\nURL: ${a.url}\n\n${(a.content || '').slice(0, 3000)}`
+      )
+      .join('\n\n');
+    setInputText(articlesFormatted);
+
     try {
       const res = await fetch('/api/newsletters', {
         method: 'POST',
@@ -111,11 +130,30 @@ export default function NewslettersView() {
     }
   };
 
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(label);
+      setTimeout(() => setCopied(null), 2000);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopied(label);
+      setTimeout(() => setCopied(null), 2000);
+    }
+  };
+
   const quickRanges = [
-    { label: 'Today', from: today(), to: today() },
-    { label: 'Yesterday', from: daysAgo(1), to: daysAgo(1) },
-    { label: 'Last 7 Days', from: daysAgo(7), to: today() },
-    { label: 'Last 30 Days', from: daysAgo(30), to: today() },
+    { label: 'Today', from: localToday(), to: localToday() },
+    { label: 'Yesterday', from: localDaysAgo(1), to: localDaysAgo(1) },
+    { label: 'Last 7 Days', from: localDaysAgo(7), to: localToday() },
+    { label: 'Last 30 Days', from: localDaysAgo(30), to: localToday() },
   ];
 
   // Group articles by date
@@ -308,36 +346,82 @@ export default function NewslettersView() {
         </div>
       )}
 
-      {/* AI Summary view */}
+      {/* AI Summary view — rendered as proper markdown */}
       {!loading && viewMode === 'summary' && (
-        <div className="bg-[var(--surface-1)] border border-[var(--border)] rounded-2xl p-6">
+        <div className="space-y-4">
           {summaryLoading ? (
-            <div className="space-y-3 animate-pulse">
-              <div className="h-5 bg-[var(--surface-3)] rounded w-1/3 mb-4" />
-              <div className="h-3 bg-[var(--surface-2)] rounded w-full" />
-              <div className="h-3 bg-[var(--surface-2)] rounded w-5/6" />
-              <div className="h-3 bg-[var(--surface-2)] rounded w-4/6" />
-              <div className="h-3 bg-[var(--surface-2)] rounded w-full mt-4" />
-              <div className="h-3 bg-[var(--surface-2)] rounded w-3/4" />
+            <div className="bg-[var(--surface-1)] border border-[var(--border)] rounded-2xl p-6">
+              <div className="space-y-3 animate-pulse">
+                <div className="h-5 bg-[var(--surface-3)] rounded w-1/3 mb-4" />
+                <div className="h-3 bg-[var(--surface-2)] rounded w-full" />
+                <div className="h-3 bg-[var(--surface-2)] rounded w-5/6" />
+                <div className="h-3 bg-[var(--surface-2)] rounded w-4/6" />
+                <div className="h-3 bg-[var(--surface-2)] rounded w-full mt-4" />
+                <div className="h-3 bg-[var(--surface-2)] rounded w-3/4" />
+              </div>
             </div>
           ) : summary ? (
             <>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-                  AI Summary
-                </h3>
-                <span className="text-xs text-[var(--text-muted)]">
-                  Based on {summaryArticleCount} article{summaryArticleCount !== 1 ? 's' : ''} ({fromDate} to {toDate})
-                </span>
-              </div>
-              <div className="prose prose-invert prose-sm max-w-none text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">
-                {summary}
+              {/* Summary output — rendered markdown */}
+              <div className="bg-[var(--surface-1)] border border-[var(--border)] rounded-2xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                    AI Summary
+                  </h3>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-[var(--text-muted)]">
+                      Based on {summaryArticleCount} article{summaryArticleCount !== 1 ? 's' : ''} ({fromDate} to {toDate})
+                    </span>
+                    <button
+                      onClick={() => copyToClipboard(summary, 'output')}
+                      className="px-3 py-1 rounded-lg text-xs font-medium bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--surface-3)] transition-colors"
+                    >
+                      {copied === 'output' ? 'Copied!' : 'Copy output'}
+                    </button>
+                    {inputText && (
+                      <button
+                        onClick={() => copyToClipboard(inputText, 'input')}
+                        className="px-3 py-1 rounded-lg text-xs font-medium bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--surface-3)] transition-colors"
+                      >
+                        {copied === 'input' ? 'Copied!' : 'Copy input articles'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Properly rendered markdown with tables, headings, lists */}
+                <style>{`
+                  .newsletter-prose h1 { font-size: 1.4em; font-weight: 700; margin: 1.5em 0 0.5em; color: var(--text-primary); border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+                  .newsletter-prose h2 { font-size: 1.2em; font-weight: 700; margin: 1.3em 0 0.5em; color: var(--text-primary); }
+                  .newsletter-prose h3 { font-size: 1.05em; font-weight: 600; margin: 1em 0 0.4em; color: var(--text-primary); }
+                  .newsletter-prose p { margin: 0 0 0.8em; line-height: 1.65; color: var(--text-secondary); font-size: 14px; }
+                  .newsletter-prose ul, .newsletter-prose ol { margin: 0 0 0.8em; padding-left: 1.5em; color: var(--text-secondary); font-size: 14px; }
+                  .newsletter-prose li { margin-bottom: 0.3em; line-height: 1.6; }
+                  .newsletter-prose strong { color: var(--text-primary); font-weight: 600; }
+                  .newsletter-prose em { color: var(--text-muted); }
+                  .newsletter-prose hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
+                  .newsletter-prose blockquote { border-left: 3px solid var(--accent); padding-left: 1em; margin: 0 0 1em; color: var(--text-muted); }
+                  .newsletter-prose code { background: rgba(255,255,255,0.06); padding: 2px 5px; border-radius: 3px; font-size: 0.9em; color: var(--accent); }
+                  .newsletter-prose a { color: var(--accent); text-decoration: underline; }
+
+                  /* Tables — the key fix for the Product Matrix */
+                  .newsletter-prose table { width: 100%; border-collapse: collapse; margin: 0.8em 0 1.2em; font-size: 13px; }
+                  .newsletter-prose thead th { background: var(--surface-2); padding: 8px 12px; text-align: left; font-weight: 600; color: var(--text-primary); border: 1px solid var(--border); white-space: nowrap; }
+                  .newsletter-prose tbody td { padding: 8px 12px; border: 1px solid var(--border); color: var(--text-secondary); vertical-align: top; }
+                  .newsletter-prose tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+                  .newsletter-prose tbody tr:hover { background: rgba(99,102,241,0.06); }
+                `}</style>
+                <div className="newsletter-prose">
+                  <ReactMarkdown>{summary}</ReactMarkdown>
+                </div>
               </div>
             </>
           ) : (
-            <p className="text-sm text-[var(--text-muted)] text-center py-4">
-              Click &quot;Generate AI Summary&quot; to create a summary of the fetched articles.
-            </p>
+            <div className="bg-[var(--surface-1)] border border-[var(--border)] rounded-2xl p-6">
+              <p className="text-sm text-[var(--text-muted)] text-center py-4">
+                Click &quot;Generate AI Summary&quot; to create a summary of the fetched articles.
+              </p>
+            </div>
           )}
         </div>
       )}
