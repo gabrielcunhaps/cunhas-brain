@@ -22,6 +22,7 @@ export async function GET() {
       prompt_student_first: pick(mod, 'DEFAULT_STUDENT_FIRST_PROMPT'),
       prompt_student_subsequent: pick(mod, 'DEFAULT_STUDENT_SUBSEQUENT_PROMPT'),
       prompt_others: pick(mod, 'DEFAULT_OTHERS_PROMPT'),
+      prompt_newsletter: pick(mod, 'DEFAULT_NEWSLETTER_PROMPT'),
     });
   } catch (err) {
     console.error('[GET /api/prompts/defaults] error:', err);

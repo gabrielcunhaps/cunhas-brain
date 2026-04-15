@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Article {
   id: number;
@@ -412,7 +413,7 @@ export default function NewslettersView() {
                   .newsletter-prose tbody tr:hover { background: rgba(99,102,241,0.06); }
                 `}</style>
                 <div className="newsletter-prose">
-                  <ReactMarkdown>{summary}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
                 </div>
               </div>
             </>

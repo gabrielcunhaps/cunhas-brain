@@ -9,7 +9,8 @@ type PromptKey =
   | 'prompt_customer'
   | 'prompt_student_first'
   | 'prompt_student_subsequent'
-  | 'prompt_others';
+  | 'prompt_others'
+  | 'prompt_newsletter';
 
 interface TabDef {
   key: PromptKey;
@@ -189,6 +190,30 @@ const TABS: TabDef[] = [
       { field: 'decisions[]', dest: 'other_meeting_decisions' },
       { field: 'follow_ups[]', dest: 'other_meeting_followups' },
       { field: 'notes', dest: 'meetings.category_notes' },
+    ],
+  },
+  {
+    key: 'prompt_newsletter',
+    label: 'Newsletter',
+    title: 'Newsletter AI Recap',
+    description:
+      'Generates the AI-powered newsletter digest from Inoreader articles. Uses the industry-recap format: Executive Summary, Product Matrix, Key Themes, Thought Leadership, Market Moves, What to Watch.',
+    placeholders: [
+      { token: '{from}', desc: 'Start date (YYYY-MM-DD)' },
+      { token: '{to}', desc: 'End date (YYYY-MM-DD)' },
+      { token: '{articleCount}', desc: 'Number of articles being analyzed' },
+      { token: '{articles}', desc: 'Full article text (title, source, date, URL, content per article)' },
+    ],
+    schemaExample: `# Newsletter Recap: {from} to {to}
+## Executive Summary
+## Product & Release Matrix (table)
+## Key Themes & Cross-Newsletter Signals
+## Thought Leadership & Debates
+## Market Moves & Competitive Landscape
+## What to Watch`,
+    pipeline: [
+      { field: 'summary', dest: 'newsletter_cache (AI summary)' },
+      { field: '(cached)', dest: 'app_settings.daily_summary_{date}' },
     ],
   },
 ];

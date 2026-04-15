@@ -3,6 +3,7 @@ import { query, queryOne } from '@/lib/db';
 import { getAnthropicClient } from '@/lib/anthropic';
 import { log } from '@/lib/logger';
 import { inoreaderFetch, getInoreaderToken } from '@/lib/inoreader';
+import { getPrompt, fillPrompt, DEFAULT_NEWSLETTER_PROMPT } from '@/lib/categoryPrompts';
 
 export const dynamic = 'force-dynamic';
 
@@ -180,90 +181,18 @@ export async function POST(request: NextRequest) {
       .join('\n');
 
     const client = await getAnthropicClient();
+    const promptTemplate = await getPrompt('prompt_newsletter', DEFAULT_NEWSLETTER_PROMPT);
+    const filledPrompt = fillPrompt(promptTemplate, {
+      from,
+      to,
+      articleCount: String(rows.length),
+      articles: articlesFormatted.slice(0, 80000),
+    });
+
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 4096,
-      messages: [
-        {
-          role: 'user',
-          content: `You are an AI industry analyst preparing a concise, non-redundant executive briefing.
-
-CONTEXT:
-- Source: Gabriel's Newsletter subscriptions
-- Date range: ${from} to ${to}
-- Total articles analyzed: ${rows.length}
-
-CRITICAL RULES:
-- ZERO redundancy: every fact appears in exactly ONE section.
-- Be concise and information-dense. No filler sentences.
-- Only include what is actually mentioned in the articles. Do not hallucinate.
-- Reference articles by number (e.g., "Art. 5, 12").
-
-YOUR OUTPUT MUST FOLLOW THIS EXACT STRUCTURE:
-
-# Newsletter Recap: ${from} to ${to}
-Source: ${rows.length} articles
-
----
-
-## Executive Summary
-
-**One paragraph** (4-6 sentences max) capturing the dominant narrative arc.
-
-Then **bullet points** for the 5-10 most important developments:
-- **[Company/Product]**: What happened and why it matters
-
----
-
-## Product & Release Matrix
-
-| Company | Product | Type | What Happened | Date | Sources |
-|---|---|---|---|---|---|
-
-Type: Launch / Update / Announce / Shutdown / Acquisition. Sort by date (newest first).
-
----
-
-## Key Themes & Cross-Newsletter Signals
-
-For each theme: bold title, 2-3 sentences max, list articles discussing it in parentheses. Only include themes in 2+ articles.
-
----
-
-## Thought Leadership & Debates
-
-Only genuinely interesting opinions, predictions, or contrarian takes:
-- **Who said it** (person + publication)
-- **The argument** (1-2 sentences)
-- Source article number
-
----
-
-## Market Moves & Competitive Landscape
-
-**Funding & Valuations:**
-- Company — amount, valuation, purpose (Art. X)
-
-**Strategic Moves:**
-- Company — what they did and why (Art. X)
-
----
-
-## What to Watch
-
-5-7 bullet points max. Forward-looking, not summaries.
-
----
-
-ARTICLES DATA:
-
-${articlesFormatted.slice(0, 80000)}
-
----
-
-Remember: ZERO redundancy across sections. Each fact lives in exactly one place.`,
-        },
-      ],
+      messages: [{ role: 'user', content: filledPrompt }],
     });
 
     const summary = response.content[0].type === 'text' ? response.content[0].text : '';
